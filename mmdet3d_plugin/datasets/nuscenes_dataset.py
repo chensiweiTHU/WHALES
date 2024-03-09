@@ -8,7 +8,7 @@ from os import path as osp
 import pdb
 
 from mmdet.datasets import DATASETS
-from ..core import show_result
+from ..core.visualizer import show_result
 from mmdet3d.core.bbox import Box3DMode, Coord3DMode, LiDARInstance3DBoxes
 from mmdet3d.datasets.custom_3d import Custom3DDataset
 from .pipelines import Compose

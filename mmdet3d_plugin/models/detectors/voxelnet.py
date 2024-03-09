@@ -10,7 +10,7 @@ from mmdet3d.models import builder
 from mmdet3d.models.detectors.single_stage import SingleStage3DDetector
 
 
-@DETECTORS.register_module()
+@DETECTORS.register_module(force=True)
 class VoxelNet(SingleStage3DDetector):
     r"""`VoxelNet <https://arxiv.org/abs/1711.06396>`_ for 3D detection."""
 

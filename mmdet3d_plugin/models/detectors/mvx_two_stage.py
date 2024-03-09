@@ -16,7 +16,7 @@ from mmdet3d.models import builder
 from mmdet3d.models.detectors.base import Base3DDetector
 
 
-@DETECTORS.register_module()
+@DETECTORS.register_module(force=True)
 class MVXTwoStageDetector(Base3DDetector):
     """Base class of Multi-modality VoxelNet."""
 
