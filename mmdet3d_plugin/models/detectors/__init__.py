@@ -8,7 +8,7 @@
 # from mmdet3d.models.detectors.h3dnet import H3DNet
 # from mmdet3d.models.detectors.imvotenet import ImVoteNet
 # from mmdet3d.models.detectors.imvoxelnet import ImVoxelNet
-# from mmdet3d.models.detectors.mvx_faster_rcnn import DynamicMVXFasterRCNN, MVXFasterRCNN
+from .mvx_faster_rcnn import DynamicMVXFasterRCNN, MVXFasterRCNN
 from .mvx_two_stage import MVXTwoStageDetector
 # from mmdet3d.models.detectors.parta2 import PartA2
 # from mmdet3d.models.detectors.single_stage_mono3d import SingleStageMono3DDetector
@@ -17,7 +17,7 @@ from .mvx_two_stage import MVXTwoStageDetector
 from .voxelnet import VoxelNet
 from .OpenCood_detector import OpenCoodDetector
 __all__ = [
-    'MVXTwoStageDetector', 'VoxelNet', 'OpenCoodDetector'
+    'MVXTwoStageDetector', 'VoxelNet', 'OpenCoodDetector', 'DynamicMVXFasterRCNN', 'MVXFasterRCNN'
 ]
 # __all__ = [
 #     'Base3DDetector', 'VoxelNet', 'DynamicVoxelNet', 'MVXTwoStageDetector',

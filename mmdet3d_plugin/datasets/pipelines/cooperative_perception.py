@@ -6,7 +6,35 @@ from pyquaternion import Quaternion
 import torch
 import pdb
 import copy
+from mmdet3d.datasets.pipelines import DefaultFormatBundle3D
+from mmdet3d.datasets.pipelines import PointsRangeFilter
+from mmcv.parallel import DataContainer as DC
 @PIPELINES.register_module()
+class DefaultFormatBundle3DCP(DefaultFormatBundle3D):
+    def __call__(self, results):
+        results = super(DefaultFormatBundle3DCP, self).__call__(results)
+        if 'cooperative_agents' in results.keys():
+            for key in results['cooperative_agents'].keys():
+                if 'points' in results['cooperative_agents'][key].keys():
+                    assert isinstance(results['cooperative_agents'][key]['points'], BasePoints)
+                    results['cooperative_agents'][key]['points'] = results['cooperative_agents'][key]['points'].tensor
+        return results
+
+@PIPELINES.register_module()
+class PointsRangeFilterCP(PointsRangeFilter):
+    def __call__(self, results):
+        results = super(PointsRangeFilterCP, self).__call__(results)
+        if 'cooperative_agents' in results.keys():
+            for key in results['cooperative_agents'].keys():
+                if 'points' in results['cooperative_agents'][key].keys():
+                    assert isinstance(results['cooperative_agents'][key]['points'], BasePoints)
+                    points = results['cooperative_agents'][key]['points']
+                    points_mask = points.in_range_3d(self.pcd_range)
+                    clean_points = points[points_mask]
+                    results['cooperative_agents'][key]['points'] = clean_points
+        return results
+
+@PIPELINES.register_module(force=True)
 class LoadPointsFromCooperativeAgents(LoadPointsFromFile):
     """Load Points From File.
     Load sunrgbd and scannet points from file.
@@ -85,7 +113,73 @@ class LoadPointsFromCooperativeAgents(LoadPointsFromFile):
             results['cooperative_agents'] = cooperative_results
         return results
 
-@PIPELINES.register_module()
+@PIPELINES.register_module(force=True)
+class ProjectCooperativePCD2ego(object):
+    def __init__(self, fusion_dims=[]):
+        """the fusion_dims contains the potential fusion dims,
+        we will call the functions and add more dims to points
+        """
+        self.fusion_dims = fusion_dims
+
+    def __call__(self, results:dict):
+        if 'cooperative_agents' in results.keys():
+            cooperative_results = results['cooperative_agents']
+            points = results['points']
+            points_class = type(points)
+            points = points.tensor.numpy()
+            attribute_dims = None
+            # transmitted_data_size = 0
+            for veh_token in cooperative_results.keys():
+                assert veh_token != results['veh_token']
+                cp_points = copy.deepcopy(cooperative_results[veh_token]['points'])
+                # convert the points to the same coordinate system:
+                # aux veh -> world -> ego veh
+                turn_matrix = np.array([[1,0,0,0],[0,-1,0,0],[0,0,1,0],[0,0,0,1]])
+                r_matrix = Quaternion(cooperative_results[veh_token]['ego2global_rotation']).rotation_matrix
+                t_vector = cooperative_results[veh_token]['ego2global_translation']
+                matrix_c = np.eye(4)
+                matrix_c[:3, :3] = r_matrix
+                matrix_c[:3, 3] = t_vector
+
+                r_matrix = Quaternion(results['ego2global_rotation']).rotation_matrix
+                t_vector = results['ego2global_translation']
+                matrix_e = np.eye(4)
+                matrix_e[:3, :3] = r_matrix
+                matrix_e[:3, 3] = t_vector
+
+                cp_points = cp_points.tensor.numpy().T
+                # if 'cooperative_datasize_limit'  in results.keys():
+                #     data_size_limit = results['cooperative_datasize_limit'][veh_token]
+                # else:
+                #     data_size_limit = np.inf
+                # if cp_points.nbytes > data_size_limit:
+                #     point_num = int(data_size_limit / (cp_points.itemsize*cp_points.shape[0]))
+                #     # random sample the points
+                #     idx = np.random.choice(cp_points.shape[1], point_num, replace=False)
+                #     cp_points = cp_points[:, idx]
+                #     assert cp_points.nbytes <= data_size_limit
+                # transmitted_data_size += cp_points.nbytes
+                cp_points = turn_matrix@np.linalg.inv(matrix_e) @ matrix_c @turn_matrix@ cp_points
+                cp_points = cp_points.T
+                cp_points = points_class(
+                    cp_points, points_dim=cp_points.shape[-1], attribute_dims=attribute_dims)
+                results['cooperative_agents'][veh_token]['points'] = cp_points
+            #     cp_points_list.append(cp_points)
+            # points = np.concatenate(cp_points_list, axis=0)
+            vis=False
+            if vis:
+                from mmdet3d.core.visualizer.show_result import show_result
+                show_result(points, None,None,'workdirs/',results['sample_idx']+'raw-level-fusion',False,False)
+                print('raw-level-fusion-visualized!!!!!!!!!!')
+                import time 
+                time.sleep(5)
+            points = points_class(
+            points, points_dim=points.shape[-1], attribute_dims=attribute_dims)
+            # results['points'] = points
+            # results['transmitted_data_size'] = transmitted_data_size
+        return results
+
+@PIPELINES.register_module(force=True)
 class RawlevelPointCloudFusion(object):
     def __init__(self, fusion_dims=[]):
         """the fusion_dims contains the potential fusion dims,
@@ -150,7 +244,7 @@ class RawlevelPointCloudFusion(object):
             results['transmitted_data_size'] = transmitted_data_size
         return results
     
-@PIPELINES.register_module()
+@PIPELINES.register_module(force=True)
 class AgentScheduling(object):
     def __init__(self, mode="full_communication", submode="", basic_data_limit=2e6, timesteps=1000, window_size=10, scheduling_range = [-50, -50, -5, 50, 50, 3]):
         "the mode indciates the communication model used in the cooperative perception"

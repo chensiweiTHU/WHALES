@@ -15,7 +15,7 @@ from mmdet3d.datasets.pipelines.transforms_3d import (BackgroundPointsFilter, Gl
                             RandomDropPointsColor, RandomFlip3D,
                             RandomJitterPoints, VoxelBasedPointSampler)
 from .cooperative_perception import (LoadPointsFromCooperativeAgents, RawlevelPointCloudFusion,
-                                     AgentScheduling
+                                     AgentScheduling, DefaultFormatBundle3DCP
                                      )
 __all__ = [
     'ObjectSample', 'RandomFlip3D', 'ObjectNoise', 'GlobalRotScaleTrans',
@@ -28,5 +28,5 @@ __all__ = [
     'VoxelBasedPointSampler', 'GlobalAlignment', 'IndoorPatchPointSample',
     'LoadImageFromFileMono3D', 'ObjectNameFilter', 'RandomDropPointsColor',
     'RandomJitterPoints', 'LoadPointsFromCooperativeAgents', 'RawlevelPointCloudFusion',
-    'AgentScheduling'
+    'AgentScheduling','DefaultFormatBundle3DCP'
 ]

@@ -8,13 +8,15 @@ from nuscenes.utils.data_classes import Box as NuScenesBox
 from os import path as osp
 
 from mmdet.datasets import DATASETS
-from ..core import show_result
+
+from ..core.visualizer.show_result import show_result
+# from ..core import show_result
 from mmdet3d.core.bbox import Box3DMode, Coord3DMode, LiDARInstance3DBoxes
 from mmdet3d.datasets.custom_3d import Custom3DDataset
 from .pipelines import Compose
 
 
-@DATASETS.register_module()
+@DATASETS.register_module(force=True)
 class DolphinsDataset(Custom3DDataset):
     r"""NuScenes Dataset.
 
@@ -338,7 +340,8 @@ class DolphinsDataset(Custom3DDataset):
         input_dict['scene_token'] = scene_token
         input_dict['frame_token'] = frame_token
         input_dict['veh_token'] = veh_token
-        
+        input_dict['ego_velocity'] = info['gt_velocity'][int(veh_token)]
+        input_dict['veh_or_rsu'] = info['veh_or_rsu']
         if cooperative:
             cooperative_veh_tokens = []
             cooperative_ids = []
@@ -381,6 +384,7 @@ class DolphinsDataset(Custom3DDataset):
                 # else:
                 #     input_dict['history_results'] = dict() # the first frame has no history
                 input_dict['history_results'] = history_results
+            input_dict['ego_agent'] = input_dict
         return input_dict
 
     def get_scene_frame_veh(self, token):

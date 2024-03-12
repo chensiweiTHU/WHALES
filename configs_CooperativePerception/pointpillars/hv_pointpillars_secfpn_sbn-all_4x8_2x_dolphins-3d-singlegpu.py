@@ -4,7 +4,8 @@ _base_ = [
     '../_base_/schedules/schedule_2x.py',
     '../_base_/default_runtime.py',
 ]
-
+plugin = True
+plugin_dir = "mmdet3d_plugin/"
 # model settings
 class_names = [
     'Vehicle', 'Pedestrian', 'Cyclist'

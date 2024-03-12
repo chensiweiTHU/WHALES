@@ -14,13 +14,14 @@ wild_setting:
   transmission_speed: 27 # Mbps!!
   backbone_delay: 10 # ms
 
+# match the configs with mmdet3d
 yaml_parser: "load_point_pillar_params"
 train_params:
-  batch_size: &batch_size 2
+  batch_size: &batch_size 3
   epoches: 60
   eval_freq: 1
   save_freq: 1
-  max_cav: &max_cav 5
+  max_cav: &max_cav 2
 
 fusion:
   core_method: 'IntermediateFusionDataset' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
@@ -37,12 +38,12 @@ preprocess:
   # options: BasePreprocessor, VoxelPreprocessor, BevPreprocessor
   core_method: 'SpVoxelPreprocessor'
   args:
-    voxel_size: &voxel_size [0.4, 0.4, 4]
+    voxel_size: &voxel_size [0.4, 0.4, 8]
     max_points_per_voxel: 32
     max_voxel_train: 32000
     max_voxel_test: 70000
   # lidar range for each individual cav.
-  cav_lidar_range: &cav_lidar [-140.8, -38.4, -3, 140.8, 38.4, 1]
+  cav_lidar_range: &cav_lidar [-51.2, -51.2, -5, 51.2, 51.2, 3]
 
 data_augment:
   - NAME: random_world_flip
@@ -59,9 +60,9 @@ postprocess:
   core_method: 'VoxelPostprocessor' # VoxelPostprocessor, BevPostprocessor supported
   anchor_args:
     cav_lidar_range: *cav_lidar
-    l: 3.9
-    w: 1.6
-    h: 1.56
+    l: 2.5
+    w: 1.1
+    h: 0.9
     r: [0, 90]
     feature_stride: 4
     num: &achor_num 2

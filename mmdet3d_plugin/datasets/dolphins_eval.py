@@ -255,8 +255,8 @@ class DolphinsEval:
                     P_num += 1
                     if box.ego_dist < 40:
                         In_P_num += 1
-            print('Total {} Pedesrtians gt'.format(P_num))
-            print('Total {} Pedesrtians in 40m gt'.format(In_P_num))
+            print('Total {} Pedestrians gt'.format(P_num))
+            print('Total {} Pedestrians in 40m gt'.format(In_P_num))
             P_num = 0
             In_P_num = 0
             for box in self.pred_boxes.all:
@@ -264,8 +264,8 @@ class DolphinsEval:
                     P_num += 1
                     if box.ego_dist < 40:
                         In_P_num += 1
-            print('Total {} Pedesrtians detected'.format(P_num))
-            print('Total {} Pedesrtians in 40m detected'.format(In_P_num))
+            print('Total {} Pedestrians detected'.format(P_num))
+            print('Total {} Pedestrians in 40m detected'.format(In_P_num))
         # Filter boxes (distance, points per box, etc.).
         if verbose:
             print('Filtering predictions')

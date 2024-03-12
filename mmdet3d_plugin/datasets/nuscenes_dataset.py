@@ -14,7 +14,7 @@ from mmdet3d.datasets.custom_3d import Custom3DDataset
 from .pipelines import Compose
 
 
-@DATASETS.register_module()
+@DATASETS.register_module(force=True)
 class NuScenesDataset(Custom3DDataset):
     r"""NuScenes Dataset.
 
