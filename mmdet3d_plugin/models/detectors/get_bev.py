@@ -8,7 +8,8 @@
 # class PointPillarV2VNetMMDet(PointPillarV2VNet):
 from opencood.models.fuse_modules.fuse_utils import regroup
 import torch
-def get_bev(self, data_dict):
+import numpy as np
+def get_bev_V2XVIT(self, data_dict):
     voxel_features = data_dict['processed_lidar']['voxel_features']
     voxel_coords = data_dict['processed_lidar']['voxel_coords']
     voxel_num_points = data_dict['processed_lidar']['voxel_num_points']
@@ -52,4 +53,66 @@ def get_bev(self, data_dict):
     fused_feature = self.fusion_net(regroup_feature, mask, spatial_correction_matrix)
     # b h w c -> b c h w
     fused_feature = fused_feature.permute(0, 3, 1, 2)
+    return [fused_feature]
+
+def get_bev_FCooper(self, data_dict):
+    voxel_features = data_dict['processed_lidar']['voxel_features']
+    voxel_coords = data_dict['processed_lidar']['voxel_coords']
+    voxel_num_points = data_dict['processed_lidar']['voxel_num_points']
+    record_len = data_dict['record_len']
+
+    batch_dict = {'voxel_features': voxel_features,
+                    'voxel_coords': voxel_coords,
+                    'voxel_num_points': voxel_num_points,
+                    'record_len': record_len}
+    # n, 4 -> n, c
+    batch_dict = self.pillar_vfe(batch_dict)
+    # n, c -> N, C, H, W
+    batch_dict = self.scatter(batch_dict)
+    batch_dict = self.backbone(batch_dict)
+
+    spatial_features_2d = batch_dict['spatial_features_2d']
+    # downsample feature to reduce memory
+    if self.shrink_flag:
+        spatial_features_2d = self.shrink_conv(spatial_features_2d)
+    # compressor
+    if self.compression:
+        spatial_features_2d = self.naive_compressor(spatial_features_2d)
+
+    fused_feature = self.fusion_net(spatial_features_2d, record_len)
+    return [fused_feature]
+def get_bev_V2VNet(self, data_dict):
+    max_cav = max(data_dict['record_len']).cpu().numpy()
+    batch_size = len(data_dict['record_len'])
+    voxel_features = data_dict['processed_lidar']['voxel_features']
+    voxel_coords = data_dict['processed_lidar']['voxel_coords']
+    voxel_num_points = data_dict['processed_lidar']['voxel_num_points']
+    record_len = data_dict['record_len']
+    "for all of the model we project point clouds into ego frame, so we don't need pairwise_t_matrix"
+    pairwise_t_matrix = np.eye(4, dtype=np.float32)
+    # LXLX4X4
+    pairwise_t_matrix = np.tile(pairwise_t_matrix, (batch_size, max_cav, max_cav, 1, 1))
+    pairwise_t_matrix = torch.from_numpy(pairwise_t_matrix).to(voxel_features.device)
+    #data_dict['pairwise_t_matrix']
+
+    batch_dict = {'voxel_features': voxel_features,
+                    'voxel_coords': voxel_coords,
+                    'voxel_num_points': voxel_num_points,
+                    'record_len': record_len}
+    # n, 4 -> n, c
+    batch_dict = self.pillar_vfe(batch_dict)
+    # n, c -> N, C, H, W
+    batch_dict = self.scatter(batch_dict)
+    batch_dict = self.backbone(batch_dict)
+
+    spatial_features_2d = batch_dict['spatial_features_2d']
+    # downsample feature to reduce memory
+    if self.shrink_flag:
+        spatial_features_2d = self.shrink_conv(spatial_features_2d)
+    # compressor
+    if self.compression:
+        spatial_features_2d = self.naive_compressor(spatial_features_2d)
+    fused_feature = self.fusion_net(spatial_features_2d,
+                                    record_len,
+                                    pairwise_t_matrix)
     return [fused_feature]

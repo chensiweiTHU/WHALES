@@ -5,6 +5,7 @@ _base_ = [
     '../_base_/schedules/schedule_2x.py',
     '../_base_/default_runtime.py',
 ]
+find_unused_parameters=True
 class_names = [
     'Vehicle', 'Pedestrian', 'Cyclist'
 ]
@@ -53,8 +54,8 @@ train_pipeline = [
         file_client_args=file_client_args),
     dict(type='AgentScheduling',
         mode="unicast", 
-        submode="closest", 
-        basic_data_limit=6e6
+        submode="random", 
+        basic_data_limit=3e6
         ),
     dict(
         type='LoadPointsFromCooperativeAgents',
@@ -128,9 +129,9 @@ test_pipeline = [
                 translation_std=[0, 0, 0]),
             dict(type='RandomFlip3D'),
             dict(
-                type='PointsRangeFilter', point_cloud_range=point_cloud_range),
+                type='PointsRangeFilterCP', point_cloud_range=point_cloud_range),
             dict(
-                type='DefaultFormatBundle3D',
+                type='DefaultFormatBundle3DCP',
                 class_names=class_names,
                 with_label=False),
             dict(type='Collect3D', keys=['points'], meta_keys=['filename', 'ori_shape', 'img_shape', 'lidar2img',
@@ -173,8 +174,9 @@ eval_pipeline = [
     #     type='LoadPointsFromMultiSweeps',
     #     sweeps_num=10,
     #     file_client_args=file_client_args),
+    dict(type='PointsRangeFilterCP', point_cloud_range=point_cloud_range),
     dict(
-        type='DefaultFormatBundle3D',
+        type='DefaultFormatBundle3DCP',
         class_names=class_names,
         with_label=False),
     dict(type='Collect3D', keys=['points'], meta_keys=['filename', 'ori_shape', 'img_shape', 'lidar2img',
@@ -192,8 +194,8 @@ eval_pipeline = [
 ]
 # model settings
 data = dict(
-    samples_per_gpu=3,
-    workers_per_gpu=6, #调试时用0
+    samples_per_gpu=2,
+    workers_per_gpu=2, #调试时用0
     train=dict(
         type=dataset_type,
         data_root=data_root,

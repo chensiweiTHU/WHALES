@@ -16,8 +16,11 @@ from .mvx_two_stage import MVXTwoStageDetector
 # from mmdet3d.models.detectors.votenet import VoteNet
 from .voxelnet import VoxelNet
 from .OpenCood_detector import OpenCoodDetector
+from .FCooper import FCooper
+from .V2VNet import V2VNet
 __all__ = [
-    'MVXTwoStageDetector', 'VoxelNet', 'OpenCoodDetector', 'DynamicMVXFasterRCNN', 'MVXFasterRCNN'
+    'MVXTwoStageDetector', 'VoxelNet', 'OpenCoodDetector', 'DynamicMVXFasterRCNN', 'MVXFasterRCNN',
+    'FCooper', 'V2VNet'
 ]
 # __all__ = [
 #     'Base3DDetector', 'VoxelNet', 'DynamicVoxelNet', 'MVXTwoStageDetector',

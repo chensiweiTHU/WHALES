@@ -17,8 +17,10 @@ from torch.nn import functional as F
 from mmcv.runner import force_fp32
 import numpy as np
 from mmdet3d.ops import Voxelization
-from .get_bev import get_bev
+from .get_bev import get_bev_V2XVIT
 from types import MethodType
+from mmdet3d.core import (Box3DMode, Coord3DMode, bbox3d2result,
+                          merge_aug_bboxes_3d, show_result)
 @DETECTORS.register_module()
 class OpenCoodDetector(Base3DDetector):
     def __init__(self, **kwargs):
@@ -52,7 +54,7 @@ class OpenCoodDetector(Base3DDetector):
         self.pre_processor = build_preprocessor(hypes['preprocess'], train)
         self.post_processor = build_postprocessor(hypes['postprocess'], train)
         self.loss = train_utils.create_loss(hypes)
-        self.opencood_model.get_bev = MethodType(get_bev, self.opencood_model)
+        self.opencood_model.get_bev = MethodType(get_bev_V2XVIT, self.opencood_model)
     def map_mmdet3d2opencood(self, **kwargs):
         data_dict = dict()
 
@@ -197,9 +199,89 @@ class OpenCoodDetector(Base3DDetector):
     def extract_feat(self, imgs):
         """Extract features from images."""
         pass
-    def simple_test(self, img, img_metas, **kwargs):
-        pass
+    def simple_test(self, points, img_metas, img=None, rescale=False, **kwargs):
+        batch_size = len(points)
+        preprocessed_voxels = []
+        for i in range(batch_size):
+            points_np = [points[i].cpu().numpy()]
+            for key in img_metas[i]['cooperative_agents'].keys():
+                points_np.append(img_metas[i]['cooperative_agents'][key]['points'].cpu().numpy())
+            points_voxel = [
+                self.pre_processor.preprocess(points_np[p])
+                for p in range(len(points_np))
+            ]
+            points_voxel = IntermediateFusionDataset.merge_features_to_dict(points_voxel)
+            preprocessed_voxels.append(points_voxel)
+        # fuse twice
+        preprocessed_voxels = IntermediateFusionDataset.merge_features_to_dict(preprocessed_voxels)
+        processed_lidar_torch_dict = \
+            self.pre_processor.collate_batch(preprocessed_voxels)
+        
+        for key in processed_lidar_torch_dict.keys():
+            processed_lidar_torch_dict[key] = processed_lidar_torch_dict[key].to(points[0].device)
+        # voxels, num_points, coors = self.voxelize(points)
+
+        data_dict = dict()
+        # "merger the processed lidar to one batch"
+        # voxel_features = [points_voxel[i]['voxel_features']for i in range(batch_size)]
+        # voxel_coords = [points_voxel[i]['voxel_coords']for i in range(batch_size)]
+        # voxel_num_points = [points_voxel[i]['voxel_num_points']for i in range(batch_size)]
+        # data_dict['processed_lidar'] = {'voxel_features': voxel_features,
+        #                                 'voxel_coords': voxel_coords,
+        #                                 'voxel_num_points': voxel_num_points}
+        data_dict['processed_lidar'] = processed_lidar_torch_dict
+        data_dict['record_len'] = [len(img_metas[i]['cooperative_agents'].keys())+1 for i in range(batch_size)]
+        # (B, max_cav, 3)
+
+        max_cav = max(data_dict['record_len'])
+        velocity = torch.zeros(batch_size, max_cav)
+        time_delay = torch.zeros(batch_size, max_cav)
+        infra = torch.zeros(batch_size, max_cav)
+        cls_map = {'vehicle':0, 'rsu':1}
+        for i in range(batch_size):
+            keys = list(img_metas[i]['cooperative_agents'].keys())
+            velocity[i, 0] = np.linalg.norm( img_metas[i]['ego_agent']['ego_velocity'])
+            time_delay[i, 0] = 0
+            infra[i, 0] = cls_map[img_metas[i]['ego_agent']['veh_or_rsu']]
+            for j in range(data_dict['record_len'][i]-1):
+                key = keys[j]
+                velocity[i, j+1] = np.linalg.norm( img_metas[i]['cooperative_agents'][key]['ego_velocity'])
+                time_delay[i, j+1] =img_metas[i]['ego_agent']['timestamp'] - img_metas[i]['cooperative_agents'][key]['timestamp']
+                infra[i, j+1] = cls_map[img_metas[i]['cooperative_agents'][key]['veh_or_rsu']]
+        # B, max_cav, 3(dt dv infra), 1, 1
+        prior_encoding = \
+            torch.stack([velocity, time_delay, infra], dim=-1).float()
+        prior_encoding = prior_encoding.to(points[0].device)
+        data_dict['prior_encoding'] = prior_encoding
+        data_dict['spatial_correction_matrix'] = torch.eye(4,device=points[0].device).unsqueeze(0).repeat(batch_size,max_cav, 1, 1)
+        data_dict['record_len'] = torch.tensor(data_dict['record_len'],device=points[0].device)
+
+        pts_feats = self.opencood_model.get_bev(data_dict)
+        bbox_list = [dict() for i in range(len(img_metas))]
+        if pts_feats and self.with_pts_bbox:
+            bbox_pts = self.simple_test_pts(
+                pts_feats, img_metas, rescale=rescale)
+            for result_dict, pts_bbox in zip(bbox_list, bbox_pts):
+                result_dict['pts_bbox'] = pts_bbox
+                result_dict['img_metas'] = img_metas
+        return bbox_list
     
+    def simple_test_pts(self, x, img_metas, rescale=False):
+        """Test function of point cloud branch."""
+        outs = self.pts_bbox_head(x)
+        bbox_list = self.pts_bbox_head.get_bboxes(
+            *outs, img_metas, rescale=rescale)
+        bbox_results = [
+            bbox3d2result(bboxes, scores, labels)
+            for bboxes, scores, labels in bbox_list
+        ]
+        return bbox_results
+
+    @property
+    def with_pts_bbox(self):
+        """bool: Whether the detector has a 3D box head."""
+        return hasattr(self,
+                       'pts_bbox_head') and self.pts_bbox_head is not None
     @torch.no_grad()
     @force_fp32()
     def voxelize(self, points):

@@ -6,8 +6,8 @@ from pyquaternion import Quaternion
 import torch
 import pdb
 import copy
-from mmdet3d.datasets.pipelines import DefaultFormatBundle3D
-from mmdet3d.datasets.pipelines import PointsRangeFilter
+from mmdet3d.datasets.pipelines import DefaultFormatBundle3D,PointsRangeFilter,GlobalRotScaleTrans,RandomFlip3D
+# from mmdet3d.datasets.pipelines import 
 from mmcv.parallel import DataContainer as DC
 @PIPELINES.register_module()
 class DefaultFormatBundle3DCP(DefaultFormatBundle3D):
@@ -331,10 +331,15 @@ class AgentScheduling(object):
                     results['cooperative_datasize_limit'] = {
                         cooperative_agent:self.basic_data_limit
                     }
-                else:
-                    results['cooperative_veh_tokens']= []
-                    results['cooperative_agents'] = {}
-                    results['cooperative_datasize_limit'] = {}
+                else: # still get closest in no candidates in range
+                    cooperative_agent = str(np.argmin(distance2ego))
+                    results['cooperative_veh_tokens'] = [cooperative_agent]
+                    results['cooperative_agents'] = {
+                        cooperative_agent: results['cooperative_agents'][cooperative_agent]
+                    }
+                    results['cooperative_datasize_limit'] = {
+                        cooperative_agent:self.basic_data_limit
+                    }
         elif self.mode == "best_agent":
             if 'history_results' not in results.keys():
                 pass
@@ -598,3 +603,151 @@ class AgentScheduling(object):
                         'scores': ego_detections['scores'],
                         'num_vehicles_within_range': ego_detections['num_vehicles_within_range']
                     })
+
+@PIPELINES.register_module()
+class GlobalRotScaleTransCP(GlobalRotScaleTrans):
+    """We perform same data augmentation for the cooperative agents, 
+    this can only be done after points in cooperative agents are transformed 
+    to the ego vehicle coordinate system
+    """
+    def _trans_bbox_points(self, input_dict):
+        translation_std = np.array(self.translation_std, dtype=np.float32)
+        trans_factor = np.random.normal(scale=translation_std, size=3).T
+        ######
+        input_dict['points'].translate(trans_factor)
+        ######
+        input_dict['pcd_trans'] = trans_factor
+        for key in input_dict['bbox3d_fields']:
+            input_dict[key].translate(trans_factor)
+        if 'cooperative_agents' in input_dict.keys():
+            for key in input_dict['cooperative_agents'].keys():
+                if 'points' in input_dict['cooperative_agents'][key].keys():
+                    assert isinstance(input_dict['cooperative_agents'][key]['points'], BasePoints)
+                    input_dict['cooperative_agents'][key]['points'].translate(trans_factor)
+    
+    def _rot_bbox_points(self, input_dict):
+        """Private function to rotate bounding boxes and points.
+
+        Args:
+            input_dict (dict): Result dict from loading pipeline.
+
+        Returns:
+            dict: Results after rotation, 'points', 'pcd_rotation' \
+                and keys in input_dict['bbox3d_fields'] are updated \
+                in the result dict.
+        """
+        rotation = self.rot_range
+        noise_rotation = np.random.uniform(rotation[0], rotation[1])
+
+        # if no bbox in input_dict, only rotate points
+        if len(input_dict['bbox3d_fields']) == 0:
+            rot_mat_T = input_dict['points'].rotate(noise_rotation)
+            input_dict['pcd_rotation'] = rot_mat_T
+            #####
+            "rotation for cooperative agents in the same way"
+            if 'cooperative_agents' in input_dict.keys():
+                for key in input_dict['cooperative_agents'].keys():
+                    if 'points' in input_dict['cooperative_agents'][key].keys():
+                        assert isinstance(input_dict['cooperative_agents'][key]['points'], BasePoints)
+                        rot_mat_T = input_dict['cooperative_agents'][key]['points'].rotate(noise_rotation)
+            #####
+            return
+
+        # rotate points with bboxes
+        for key in input_dict['bbox3d_fields']:
+            if len(input_dict[key].tensor) != 0:
+                points, rot_mat_T = input_dict[key].rotate(
+                    noise_rotation, input_dict['points'])
+                input_dict['points'] = points
+                input_dict['pcd_rotation'] = rot_mat_T
+                #####
+                "we only need to rotate points of CP agents"
+                if 'cooperative_agents' in input_dict.keys():
+                    for key in input_dict['cooperative_agents'].keys():
+                        if 'points' in input_dict['cooperative_agents'][key].keys():
+                            assert isinstance(input_dict['cooperative_agents'][key]['points'], BasePoints)
+                            rot_mat_T = input_dict['cooperative_agents'][key]['points'].rotate(-noise_rotation)
+                            # note: rotate points is reverse to rotate box and point function
+                #####
+
+    def _scale_bbox_points(self, input_dict):
+        """Private function to scale bounding boxes and points.
+
+        Args:
+            input_dict (dict): Result dict from loading pipeline.
+
+        Returns:
+            dict: Results after scaling, 'points'and keys in \
+                input_dict['bbox3d_fields'] are updated in the result dict.
+        """
+        scale = input_dict['pcd_scale_factor']
+        #####
+        points = input_dict['points']
+        points.scale(scale)
+        if self.shift_height:
+            assert 'height' in points.attribute_dims.keys(), \
+                'setting shift_height=True but points have no height attribute'
+            points.tensor[:, points.attribute_dims['height']] *= scale
+        input_dict['points'] = points
+        # ego operation
+        #####
+        if 'cooperative_agents' in input_dict.keys():
+            for key in input_dict['cooperative_agents'].keys():
+                if 'points' in input_dict['cooperative_agents'][key].keys():
+                    assert isinstance(input_dict['cooperative_agents'][key]['points'], BasePoints)
+                    cp_points = input_dict['cooperative_agents'][key]['points']
+                    cp_points.scale(scale)
+                    if self.shift_height:
+                        assert 'height' in cp_points.attribute_dims.keys(), \
+                            'setting shift_height=True but points have no height attribute'
+                        cp_points.tensor[:, cp_points.attribute_dims['height']] *= scale
+                    input_dict['cooperative_agents'][key]['points'] = cp_points
+        for key in input_dict['bbox3d_fields']:
+            input_dict[key].scale(scale)
+
+@PIPELINES.register_module()
+class RandomFlip3DCP(RandomFlip3D):
+    def random_flip_data_3d(self, input_dict, direction='horizontal'):
+        """Flip 3D data randomly.
+
+        Args:
+            input_dict (dict): Result dict from loading pipeline.
+            direction (str): Flip direction. Default: horizontal.
+
+        Returns:
+            dict: Flipped results, 'points', 'bbox3d_fields' keys are \
+                updated in the result dict.
+        """
+        assert direction in ['horizontal', 'vertical']
+        if len(input_dict['bbox3d_fields']) == 0:  # test mode
+            input_dict['bbox3d_fields'].append('empty_box3d')
+            input_dict['empty_box3d'] = input_dict['box_type_3d'](
+                np.array([], dtype=np.float32))
+        assert len(input_dict['bbox3d_fields']) == 1
+        for key in input_dict['bbox3d_fields']:
+            if 'points' in input_dict:
+                ####
+                'ego filp points'
+                input_dict['points'] = input_dict[key].flip(
+                    direction, points=input_dict['points'])
+                ####
+                "filp points of cooperative agents in the same way, points only"
+                if 'cooperative_agents' in input_dict.keys():
+                    for key in input_dict['cooperative_agents'].keys():
+                        if 'points' in input_dict['cooperative_agents'][key].keys():
+                            assert isinstance(input_dict['cooperative_agents'][key]['points'], BasePoints)
+                            input_dict['cooperative_agents'][key]['points'].flip(direction)
+            else:
+                input_dict[key].flip(direction)
+        if 'centers2d' in input_dict:
+            assert self.sync_2d is True and direction == 'horizontal', \
+                'Only support sync_2d=True and horizontal flip with images'
+            w = input_dict['ori_shape'][1]
+            input_dict['centers2d'][..., 0] = \
+                w - input_dict['centers2d'][..., 0]
+            # need to modify the horizontal position of camera center
+            # along u-axis in the image (flip like centers2d)
+            # ['cam2img'][0][2] = c_u
+            # see more details and examples at
+            # https://github.com/open-mmlab/mmdetection3d/pull/744
+            input_dict['cam2img'][0][2] = w - input_dict['cam2img'][0][2]
