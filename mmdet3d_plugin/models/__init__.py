@@ -19,7 +19,7 @@ from mmdet3d.models.roi_heads import *  # noqa: F401,F403
 from .roi_heads import *  # noqa: F401,F403
 from mmdet3d.models.segmentors import *  # noqa: F401,F403
 from mmdet3d.models.voxel_encoders import *  # noqa: F401,F403
-
+from .voxel_encoders import *  # noqa: F401,F403
 __all__ = [
     'VOXEL_ENCODERS', 'MIDDLE_ENCODERS', 'FUSION_LAYERS', 'build_backbone',
     'build_neck', 'build_roi_extractor', 'build_shared_head', 'build_head',

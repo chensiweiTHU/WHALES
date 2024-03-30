@@ -141,7 +141,8 @@ class DolphinsDataset(Custom3DDataset):
                 "Vehicle": 50,
                 "Pedestrian": 40,
                 "Cyclist": 40,
-                }
+                },
+                time_delay = 0,
         ):
         self.load_interval = load_interval
         self.use_valid_flag = use_valid_flag
@@ -154,12 +155,15 @@ class DolphinsDataset(Custom3DDataset):
             box_type_3d=box_type_3d,
             filter_empty_gt=filter_empty_gt,
             test_mode=test_mode)
+        self.token_map=dict()
         for i in range(len(self.data_infos)):
+            self.token_map[self.data_infos[i]['token']] = i
             self.data_infos[i]['dataset_index'] = i
         self.with_velocity = with_velocity
         self.eval_version = eval_version
         # self.img_prefix = img_prefix
         self.class_range = class_range
+        self.time_delay = time_delay
         from nuscenes.eval.detection.config import config_factory
         self.eval_detection_configs = config_factory(self.eval_version)
         self.eval_detection_configs = self.config_factory(self.eval_detection_configs)
@@ -209,8 +213,9 @@ class DolphinsDataset(Custom3DDataset):
             list[dict]: List of annotations sorted by timestamps.
         """
         data = mmcv.load(ann_file)
-        print(data.keys())
-        data_infos = list(sorted(data['infos'], key=lambda e: e['timestamp']))
+        # print(data.keys())
+        data_infos = data['infos']
+        #data_infos = list(sorted(data['infos'], key=lambda e: e['timestamp']))
         data_infos = data_infos[::self.load_interval]
         self.metadata = data['metadata']
         self.version = self.metadata['version']
@@ -287,6 +292,7 @@ class DolphinsDataset(Custom3DDataset):
                 - ann_info (dict): Annotation info.
         """
         info = self.data_infos[index]
+        agent_num = info['sample_info']['vehicle_num']+1
         # standard protocal modified from SECOND.Pytorch
         input_dict = dict(
             sample_idx=info['token'],
@@ -343,26 +349,37 @@ class DolphinsDataset(Custom3DDataset):
         input_dict['ego_velocity'] = info['gt_velocity'][int(veh_token)]
         input_dict['veh_or_rsu'] = info['veh_or_rsu']
         if cooperative:
-            cooperative_veh_tokens = []
             cooperative_ids = []
-            s = index-1
-            l = index+1
-            while s>=0:
-                s_scene,s_frame,s_veh = self.get_scene_frame_veh(self.data_infos[s]['token']) 
-                if s_scene == scene_token and s_frame == frame_token:
-                    cooperative_ids.append(s)
-                    cooperative_veh_tokens.append(s_veh)
-                else:
-                    break
-                s -= 1
-            while l<len(self.data_infos):
-                l_scene,l_frame,l_veh = self.get_scene_frame_veh(self.data_infos[l]['token']) 
-                if l_scene == scene_token and l_frame == frame_token:
-                    cooperative_ids.append(l)
-                    cooperative_veh_tokens.append(l_veh)
-                else:
-                    break
-                l += 1
+            cooperative_veh_tokens = []
+            for i in range(agent_num):
+                if i!=int(veh_token):
+                    cooperative_id = index - self.time_delay*agent_num + i - int(veh_token)
+                    if cooperative_id>=0 and cooperative_id<len(self.data_infos):
+                        s_scene,s_frame,s_veh = self.get_scene_frame_veh(self.data_infos[cooperative_id]['token']) 
+                        if s_scene ==scene_token:
+                            assert int(s_frame) == int(frame_token)-self.time_delay*5
+                            assert s_veh == str(i)
+                            cooperative_ids.append(cooperative_id)
+                            cooperative_veh_tokens.append(s_veh)
+                        else:
+                            cooperative_id = index + i - int(veh_token)
+                            if cooperative_id>=0 and cooperative_id<len(self.data_infos):
+                                s_scene,s_frame,s_veh = self.get_scene_frame_veh(self.data_infos[cooperative_id]['token']) 
+                                if s_scene ==scene_token:
+                                    assert s_veh == str(i)
+                                    cooperative_ids.append(cooperative_id)
+                                    cooperative_veh_tokens.append(s_veh)
+                    elif cooperative_id<0:
+                        # real time in frame 0 just for compatibility
+                        cooperative_id = index + i - int(veh_token)
+                        if cooperative_id>=0 and cooperative_id<len(self.data_infos):
+                            s_scene,s_frame,s_veh = self.get_scene_frame_veh(self.data_infos[cooperative_id]['token']) 
+                            if s_scene ==scene_token:
+                               
+                                assert s_veh == str(i)
+                                cooperative_ids.append(cooperative_id)
+                                cooperative_veh_tokens.append(s_veh)
+
             input_dict['cooperative_veh_tokens'] = cooperative_veh_tokens
             input_dict['cooperative_agents'] = dict()
             history_results = dict()
@@ -390,6 +407,8 @@ class DolphinsDataset(Custom3DDataset):
     def get_scene_frame_veh(self, token):
         scene_token, frame_token, veh_token = token.split('_')
         return scene_token, frame_token, veh_token
+    def fuse_token(self, scene_token, frame_token, veh_token):
+        return scene_token+'_'+frame_token+'_'+veh_token
 
     def get_ann_info(self, index):
         """Get annotation info according to the given index.

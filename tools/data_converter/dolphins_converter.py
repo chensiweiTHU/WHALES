@@ -13,7 +13,7 @@ from typing import List, Tuple, Union
 from mmdet3d.core.bbox.box_np_ops import points_cam2img
 from mmdet3d.datasets.dolphins_dataset import DolphinsDataset
 
-from tools.data_converter.dolphins import Dolphins
+from data_converter.dolphins import Dolphins
 
 dolphins_categories = ('Vehicle', 'Pedestrian', 'Cyclist')
 

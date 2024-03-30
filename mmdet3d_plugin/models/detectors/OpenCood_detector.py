@@ -98,10 +98,19 @@ class OpenCoodDetector(Base3DDetector):
         # todo: 之前少了协同车的预处理
         batch_size = len(points)
         preprocessed_voxels = []
+        cooperative = 'cooperative_agents' in img_metas[0].keys()
         for i in range(batch_size):
             points_np = [points[i].cpu().numpy()]
-            for key in img_metas[i]['cooperative_agents'].keys():
-                points_np.append(img_metas[i]['cooperative_agents'][key]['points'].cpu().numpy())
+            if cooperative:
+                for key in img_metas[i]['cooperative_agents'].keys():
+                    if len(img_metas[i]['cooperative_agents'][key]['points'])>0:
+                        points_np.append(img_metas[i]['cooperative_agents'][key]['points'].cpu().numpy())
+                    else:
+                        # relative_position = np.array(img_metas[i]['cooperative_agents'][key]['ego2global_translation']) \
+                        #     - np.array(img_metas[i]['ego_agent']['ego2global_translation'])
+                        "create one point for empty point cloud"
+                        one_point = np.array([[50, 50, 0, 0.1]])
+                        points_np.append(one_point)
             points_voxel = [
                 self.pre_processor.preprocess(points_np[p])
                 for p in range(len(points_np))
@@ -126,30 +135,34 @@ class OpenCoodDetector(Base3DDetector):
         #                                 'voxel_coords': voxel_coords,
         #                                 'voxel_num_points': voxel_num_points}
         data_dict['processed_lidar'] = processed_lidar_torch_dict
-        data_dict['record_len'] = [len(img_metas[i]['cooperative_agents'].keys())+1 for i in range(batch_size)]
+        if cooperative:
+            data_dict['record_len'] = [len(img_metas[i]['cooperative_agents'].keys())+1 for i in range(batch_size)]
+        else:
+            data_dict['record_len'] = [1 for i in range(batch_size)]
         # (B, max_cav, 3)
-
-        max_cav = max(data_dict['record_len'])
-        velocity = torch.zeros(batch_size, max_cav)
-        time_delay = torch.zeros(batch_size, max_cav)
-        infra = torch.zeros(batch_size, max_cav)
-        cls_map = {'vehicle':0, 'rsu':1}
-        for i in range(batch_size):
-            keys = list(img_metas[i]['cooperative_agents'].keys())
-            velocity[i, 0] = np.linalg.norm( img_metas[i]['ego_agent']['ego_velocity'])
-            time_delay[i, 0] = 0
-            infra[i, 0] = cls_map[img_metas[i]['ego_agent']['veh_or_rsu']]
-            for j in range(data_dict['record_len'][i]-1):
-                key = keys[j]
-                velocity[i, j+1] = np.linalg.norm( img_metas[i]['cooperative_agents'][key]['ego_velocity'])
-                time_delay[i, j+1] =img_metas[i]['ego_agent']['timestamp'] - img_metas[i]['cooperative_agents'][key]['timestamp']
-                infra[i, j+1] = cls_map[img_metas[i]['cooperative_agents'][key]['veh_or_rsu']]
-        # B, max_cav, 3(dt dv infra), 1, 1
-        prior_encoding = \
-            torch.stack([velocity, time_delay, infra], dim=-1).float()
-        prior_encoding = prior_encoding.to(points[0].device)
-        data_dict['prior_encoding'] = prior_encoding
-        data_dict['spatial_correction_matrix'] = torch.eye(4,device=points[0].device).unsqueeze(0).repeat(batch_size,max_cav, 1, 1)
+        if cooperative:
+            max_cav = max(data_dict['record_len'])
+            velocity = torch.zeros(batch_size, max_cav)
+            time_delay = torch.zeros(batch_size, max_cav)
+            infra = torch.zeros(batch_size, max_cav)
+            cls_map = {'vehicle':0, 'rsu':1}
+            for i in range(batch_size):
+                keys = list(img_metas[i]['cooperative_agents'].keys())
+                velocity[i, 0] = np.linalg.norm( img_metas[i]['ego_agent']['ego_velocity'])
+                time_delay[i, 0] = 0
+                infra[i, 0] = cls_map[img_metas[i]['ego_agent']['veh_or_rsu']]
+                for j in range(data_dict['record_len'][i]-1):
+                    key = keys[j]
+                    velocity[i, j+1] = np.linalg.norm( img_metas[i]['cooperative_agents'][key]['ego_velocity'])
+                    time_delay[i, j+1] =img_metas[i]['ego_agent']['timestamp'] - img_metas[i]['cooperative_agents'][key]['timestamp']
+                    infra[i, j+1] = cls_map[img_metas[i]['cooperative_agents'][key]['veh_or_rsu']]
+            # B, max_cav, 3(dt dv infra), 1, 1
+            prior_encoding = \
+                torch.stack([velocity, time_delay, infra], dim=-1).float()
+            prior_encoding = prior_encoding.to(points[0].device)
+            data_dict['prior_encoding'] = prior_encoding
+            data_dict['spatial_correction_matrix'] = torch.eye(4,device=points[0].device).unsqueeze(0).repeat(batch_size,max_cav, 1, 1)
+        
         data_dict['record_len'] = torch.tensor(data_dict['record_len'],device=points[0].device)
         # data_dict = train_utils.to_device(data_dict, device)
         # out_puts = self.opencood_model(data_dict)
@@ -202,10 +215,12 @@ class OpenCoodDetector(Base3DDetector):
     def simple_test(self, points, img_metas, img=None, rescale=False, **kwargs):
         batch_size = len(points)
         preprocessed_voxels = []
+        cooperative = 'cooperative_agents' in img_metas[0].keys()
         for i in range(batch_size):
             points_np = [points[i].cpu().numpy()]
-            for key in img_metas[i]['cooperative_agents'].keys():
-                points_np.append(img_metas[i]['cooperative_agents'][key]['points'].cpu().numpy())
+            if cooperative:
+                for key in img_metas[i]['cooperative_agents'].keys():
+                    points_np.append(img_metas[i]['cooperative_agents'][key]['points'].cpu().numpy())
             points_voxel = [
                 self.pre_processor.preprocess(points_np[p])
                 for p in range(len(points_np))
@@ -230,30 +245,33 @@ class OpenCoodDetector(Base3DDetector):
         #                                 'voxel_coords': voxel_coords,
         #                                 'voxel_num_points': voxel_num_points}
         data_dict['processed_lidar'] = processed_lidar_torch_dict
-        data_dict['record_len'] = [len(img_metas[i]['cooperative_agents'].keys())+1 for i in range(batch_size)]
+        if cooperative:
+            data_dict['record_len'] = [len(img_metas[i]['cooperative_agents'].keys())+1 for i in range(batch_size)]
+        else:
+            data_dict['record_len'] = [1 for i in range(batch_size)]
         # (B, max_cav, 3)
-
-        max_cav = max(data_dict['record_len'])
-        velocity = torch.zeros(batch_size, max_cav)
-        time_delay = torch.zeros(batch_size, max_cav)
-        infra = torch.zeros(batch_size, max_cav)
-        cls_map = {'vehicle':0, 'rsu':1}
-        for i in range(batch_size):
-            keys = list(img_metas[i]['cooperative_agents'].keys())
-            velocity[i, 0] = np.linalg.norm( img_metas[i]['ego_agent']['ego_velocity'])
-            time_delay[i, 0] = 0
-            infra[i, 0] = cls_map[img_metas[i]['ego_agent']['veh_or_rsu']]
-            for j in range(data_dict['record_len'][i]-1):
-                key = keys[j]
-                velocity[i, j+1] = np.linalg.norm( img_metas[i]['cooperative_agents'][key]['ego_velocity'])
-                time_delay[i, j+1] =img_metas[i]['ego_agent']['timestamp'] - img_metas[i]['cooperative_agents'][key]['timestamp']
-                infra[i, j+1] = cls_map[img_metas[i]['cooperative_agents'][key]['veh_or_rsu']]
-        # B, max_cav, 3(dt dv infra), 1, 1
-        prior_encoding = \
-            torch.stack([velocity, time_delay, infra], dim=-1).float()
-        prior_encoding = prior_encoding.to(points[0].device)
-        data_dict['prior_encoding'] = prior_encoding
-        data_dict['spatial_correction_matrix'] = torch.eye(4,device=points[0].device).unsqueeze(0).repeat(batch_size,max_cav, 1, 1)
+        if cooperative:
+            max_cav = max(data_dict['record_len'])
+            velocity = torch.zeros(batch_size, max_cav)
+            time_delay = torch.zeros(batch_size, max_cav)
+            infra = torch.zeros(batch_size, max_cav)
+            cls_map = {'vehicle':0, 'rsu':1}
+            for i in range(batch_size):
+                keys = list(img_metas[i]['cooperative_agents'].keys())
+                velocity[i, 0] = np.linalg.norm( img_metas[i]['ego_agent']['ego_velocity'])
+                time_delay[i, 0] = 0
+                infra[i, 0] = cls_map[img_metas[i]['ego_agent']['veh_or_rsu']]
+                for j in range(data_dict['record_len'][i]-1):
+                    key = keys[j]
+                    velocity[i, j+1] = np.linalg.norm( img_metas[i]['cooperative_agents'][key]['ego_velocity'])
+                    time_delay[i, j+1] =img_metas[i]['ego_agent']['timestamp'] - img_metas[i]['cooperative_agents'][key]['timestamp']
+                    infra[i, j+1] = cls_map[img_metas[i]['cooperative_agents'][key]['veh_or_rsu']]
+            # B, max_cav, 3(dt dv infra), 1, 1
+            prior_encoding = \
+                torch.stack([velocity, time_delay, infra], dim=-1).float()
+            prior_encoding = prior_encoding.to(points[0].device)
+            data_dict['prior_encoding'] = prior_encoding
+            data_dict['spatial_correction_matrix'] = torch.eye(4,device=points[0].device).unsqueeze(0).repeat(batch_size,max_cav, 1, 1)
         data_dict['record_len'] = torch.tensor(data_dict['record_len'],device=points[0].device)
 
         pts_feats = self.opencood_model.get_bev(data_dict)
@@ -261,6 +279,16 @@ class OpenCoodDetector(Base3DDetector):
         if pts_feats and self.with_pts_bbox:
             bbox_pts = self.simple_test_pts(
                 pts_feats, img_metas, rescale=rescale)
+            for img_meta in img_metas:
+                if 'cooperative_agents' in img_meta.keys():
+                    for key in img_meta['cooperative_agents'].keys():
+                        if 'points' in img_meta['cooperative_agents'][key].keys():
+                            "delete the points, because imgmetas is saved in temp files"
+                            del img_meta['cooperative_agents'][key]['points']
+                if 'ego_agent' in img_meta.keys():
+                    if 'points' in img_meta['ego_agent'].keys():
+                        "delete the points, because imgmetas is saved in temp files"
+                        del img_meta['ego_agent']['points']
             for result_dict, pts_bbox in zip(bbox_list, bbox_pts):
                 result_dict['pts_bbox'] = pts_bbox
                 result_dict['img_metas'] = img_metas

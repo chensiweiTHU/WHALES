@@ -100,9 +100,9 @@ test_pipeline = [
         use_dim=4,
         file_client_args=file_client_args),
     dict(type='AgentScheduling',
-        mode="unicast", 
-        submode="closest", 
-        basic_data_limit=6e6
+        mode="full_communication", 
+        #submode="closest", 
+        #basic_data_limit=6e6
         ),
     dict(
         type='LoadPointsFromCooperativeAgents',
@@ -194,8 +194,8 @@ eval_pipeline = [
 ]
 # model settings
 data = dict(
-    samples_per_gpu=2,
-    workers_per_gpu=2, #调试时用0
+    samples_per_gpu=1,
+    workers_per_gpu=1, #调试时用0
     train=dict(
         type=dataset_type,
         data_root=data_root,

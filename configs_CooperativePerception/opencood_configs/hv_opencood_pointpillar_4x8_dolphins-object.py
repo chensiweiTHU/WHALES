@@ -52,44 +52,44 @@ train_pipeline = [
         load_dim=4,
         use_dim=4,
         file_client_args=file_client_args),
-    dict(type='AgentScheduling',
-        mode="unicast", 
-        submode="random", 
-        basic_data_limit=3e6
-        ),
-    dict(
-        type='LoadPointsFromCooperativeAgents',
-        coord_type='LIDAR',
-        load_dim=4, use_dim=4,
-        file_client_args=file_client_args
-        ),
+    # dict(type='AgentScheduling',
+    #     mode="unicast", 
+    #     submode="random", 
+    #     basic_data_limit=3e6
+    #     ),
+    # dict(
+    #     type='LoadPointsFromCooperativeAgents',
+    #     coord_type='LIDAR',
+    #     load_dim=4, use_dim=4,
+    #     file_client_args=file_client_args
+    #     ),
     dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
     # dict(type='ObjectSample', db_sampler=db_sampler),
-    dict(type='ProjectCooperativePCD2ego'),
+    # dict(type='ProjectCooperativePCD2ego'),
     dict(
-        type='GlobalRotScaleTransCP',
+        type='GlobalRotScaleTrans',
         rot_range=[-0.3925, 0.3925],
         scale_ratio_range=[0.95, 1.05],
         translation_std=[0, 0, 0]),
-    dict(type='RandomFlip3DCP', flip_ratio_bev_horizontal=0.5),
+    dict(type='RandomFlip3D', flip_ratio_bev_horizontal=0.5),
     dict(type='PointsRangeFilterCP', point_cloud_range=point_cloud_range),
     dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
     dict(type='ObjectNameFilter', classes=class_names),
     dict(type='PointShuffle'),
     dict(type='DefaultFormatBundle3DCP', class_names=class_names),
-    dict(type='Collect3D', keys=['points', 'gt_bboxes_3d', 'gt_labels_3d'],\
-        meta_keys=['filename', 'ori_shape', 'img_shape', 'lidar2img',
-                'depth2img', 'cam2img', 'pad_shape',
-                'scale_factor', 'flip', 'pcd_horizontal_flip',
-                'pcd_vertical_flip', 'box_mode_3d', 'box_type_3d',
-                'img_norm_cfg', 'pcd_trans', 'sample_idx',
-                'pcd_scale_factor', 'pcd_rotation', 'pts_filename',
-                'transformation_3d_flow',
-                # new keys
-                # 'transmitted_data_size'
-                'cooperative_agents',
-                'ego_agent'
-                ])
+    dict(type='Collect3D', keys=['points', 'gt_bboxes_3d', 'gt_labels_3d'],)\
+        # meta_keys=['filename', 'ori_shape', 'img_shape', 'lidar2img',
+        #         'depth2img', 'cam2img', 'pad_shape',
+        #         'scale_factor', 'flip', 'pcd_horizontal_flip',
+        #         'pcd_vertical_flip', 'box_mode_3d', 'box_type_3d',
+        #         'img_norm_cfg', 'pcd_trans', 'sample_idx',
+        #         'pcd_scale_factor', 'pcd_rotation', 'pts_filename',
+        #         'transformation_3d_flow',
+        #         # new keys
+        #         # 'transmitted_data_size'
+        #         'cooperative_agents',
+        #         'ego_agent'
+        #         ])
     # dict(type='Collect3D', keys=['points', 'gt_bboxes_3d', 'gt_labels_3d'])
 ]
 test_pipeline = [
@@ -127,14 +127,15 @@ test_pipeline = [
                 rot_range=[0, 0],
                 scale_ratio_range=[1., 1.],
                 translation_std=[0, 0, 0]),
-            dict(type='RandomFlip3D'),
+            # dict(type='RandomFlip3D'),
             dict(
                 type='PointsRangeFilterCP', point_cloud_range=point_cloud_range),
             dict(
                 type='DefaultFormatBundle3DCP',
                 class_names=class_names,
                 with_label=False),
-            dict(type='Collect3D', keys=['points'], meta_keys=['filename', 'ori_shape', 'img_shape', 'lidar2img',
+            dict(type='Collect3D', keys=['points'], 
+                meta_keys=['filename', 'ori_shape', 'img_shape', 'lidar2img',
                 'depth2img', 'cam2img', 'pad_shape',
                 'scale_factor', 'flip', 'pcd_horizontal_flip',
                 'pcd_vertical_flip', 'box_mode_3d', 'box_type_3d',
@@ -145,7 +146,8 @@ test_pipeline = [
                 'transmitted_data_size',
                 'cooperative_agents',
                 'ego_agent'
-                ])
+                ]
+                )
         ])
 ]
 # construct a pipeline for data and gt loading in show function
@@ -157,19 +159,19 @@ eval_pipeline = [
         load_dim=4,
         use_dim=4,
         file_client_args=file_client_args),
-    dict(type='AgentScheduling',
-        mode="unicast", 
-        submode="closest", 
-        basic_data_limit=6e6
-        ),
-    dict(
-        type='LoadPointsFromCooperativeAgents',
-        coord_type='LIDAR',
-        load_dim=4, use_dim=4,
-        file_client_args=file_client_args
-        ),
+    # dict(type='AgentScheduling',
+    #     mode="unicast", 
+    #     submode="closest", 
+    #     basic_data_limit=6e6
+    #     ),
+    # dict(
+    #     type='LoadPointsFromCooperativeAgents',
+    #     coord_type='LIDAR',
+    #     load_dim=4, use_dim=4,
+    #     file_client_args=file_client_args
+    #     ),
     dict(type='LoadAnnotations3D'),
-    dict(type='ProjectCooperativePCD2ego'),
+    # dict(type='ProjectCooperativePCD2ego'),
     # dict(
     #     type='LoadPointsFromMultiSweeps',
     #     sweeps_num=10,
@@ -179,23 +181,25 @@ eval_pipeline = [
         type='DefaultFormatBundle3DCP',
         class_names=class_names,
         with_label=False),
-    dict(type='Collect3D', keys=['points'], meta_keys=['filename', 'ori_shape', 'img_shape', 'lidar2img',
-                    'depth2img', 'cam2img', 'pad_shape',
-                    'scale_factor', 'flip', 'pcd_horizontal_flip',
-                    'pcd_vertical_flip', 'box_mode_3d', 'box_type_3d',
-                    'img_norm_cfg', 'pcd_trans', 'sample_idx',
-                    'pcd_scale_factor', 'pcd_rotation', 'pts_filename',
-                    'transformation_3d_flow',
-                    # new keys
-                    'transmitted_data_size',
-                    'cooperative_agents',
-                    'ego_agent'
-                    ])
+    dict(type='Collect3D', keys=['points'], 
+        #  meta_keys=['filename', 'ori_shape', 'img_shape', 'lidar2img',
+        #             'depth2img', 'cam2img', 'pad_shape',
+        #             'scale_factor', 'flip', 'pcd_horizontal_flip',
+        #             'pcd_vertical_flip', 'box_mode_3d', 'box_type_3d',
+        #             'img_norm_cfg', 'pcd_trans', 'sample_idx',
+        #             'pcd_scale_factor', 'pcd_rotation', 'pts_filename',
+        #             'transformation_3d_flow',
+        #             # new keys
+        #             'transmitted_data_size',
+        #             'cooperative_agents',
+        #             'ego_agent'
+        #             ]
+                    )
 ]
 # model settings
 data = dict(
-    samples_per_gpu=2,
-    workers_per_gpu=2, #调试时用0
+    samples_per_gpu=8,
+    workers_per_gpu=8, #调试时用0
     train=dict(
         type=dataset_type,
         data_root=data_root,
@@ -224,10 +228,11 @@ data = dict(
         classes=class_names,
         modality=input_modality,
         test_mode=True,
-        box_type_3d='LiDAR'))
+        box_type_3d='LiDAR')
+        )
 model = dict(
-    type='FCooper',
-    hypes_yaml='configs_CooperativePerception/opencood_configs/point_pillar_fcooper.yaml',
+    type='PointPillarOpenCOOD',
+    hypes_yaml='configs_CooperativePerception/opencood_configs/point_pillar_early_fusion.yaml',
     # pts_voxel_layer=dict(
     #     max_num_points=64,
     #     point_cloud_range=[-50, -50, -5, 50, 50, 3],
@@ -279,13 +284,13 @@ model = dict(
             debug=False)),
     test_cfg=dict(
         pts=dict(
-            use_rotate_nms=True,
+            use_rotate_nms=False,
             nms_across_levels=False,
             nms_pre=1000,
-            nms_thr=0.2,
+            nms_thr=0.3,
             score_thr=0.05,
             min_bbox_size=0,
-            max_num=500))
+            max_num=100))
 )
 log_config = dict(
     interval=50,

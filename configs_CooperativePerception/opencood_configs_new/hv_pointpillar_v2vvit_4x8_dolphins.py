@@ -5,7 +5,6 @@ _base_ = [
     '../_base_/schedules/schedule_2x.py',
     '../_base_/default_runtime.py',
 ]
-find_unused_parameters=True
 class_names = [
     'Vehicle', 'Pedestrian', 'Cyclist'
 ]
@@ -54,8 +53,8 @@ train_pipeline = [
         file_client_args=file_client_args),
     dict(type='AgentScheduling',
         mode="unicast", 
-        submode="random", 
-        basic_data_limit=3e6
+        submode="closest", 
+        basic_data_limit=6e6
         ),
     dict(
         type='LoadPointsFromCooperativeAgents',
@@ -67,11 +66,11 @@ train_pipeline = [
     # dict(type='ObjectSample', db_sampler=db_sampler),
     dict(type='ProjectCooperativePCD2ego'),
     dict(
-        type='GlobalRotScaleTransCP',
+        type='GlobalRotScaleTrans',
         rot_range=[-0.3925, 0.3925],
         scale_ratio_range=[0.95, 1.05],
         translation_std=[0, 0, 0]),
-    dict(type='RandomFlip3DCP', flip_ratio_bev_horizontal=0.5),
+    dict(type='RandomFlip3D', flip_ratio_bev_horizontal=0.5),
     dict(type='PointsRangeFilterCP', point_cloud_range=point_cloud_range),
     dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
     dict(type='ObjectNameFilter', classes=class_names),
@@ -129,9 +128,9 @@ test_pipeline = [
                 translation_std=[0, 0, 0]),
             dict(type='RandomFlip3D'),
             dict(
-                type='PointsRangeFilterCP', point_cloud_range=point_cloud_range),
+                type='PointsRangeFilter', point_cloud_range=point_cloud_range),
             dict(
-                type='DefaultFormatBundle3DCP',
+                type='DefaultFormatBundle3D',
                 class_names=class_names,
                 with_label=False),
             dict(type='Collect3D', keys=['points'], meta_keys=['filename', 'ori_shape', 'img_shape', 'lidar2img',
@@ -174,9 +173,8 @@ eval_pipeline = [
     #     type='LoadPointsFromMultiSweeps',
     #     sweeps_num=10,
     #     file_client_args=file_client_args),
-    dict(type='PointsRangeFilterCP', point_cloud_range=point_cloud_range),
     dict(
-        type='DefaultFormatBundle3DCP',
+        type='DefaultFormatBundle3D',
         class_names=class_names,
         with_label=False),
     dict(type='Collect3D', keys=['points'], meta_keys=['filename', 'ori_shape', 'img_shape', 'lidar2img',
@@ -194,8 +192,8 @@ eval_pipeline = [
 ]
 # model settings
 data = dict(
-    samples_per_gpu=2,
-    workers_per_gpu=2, #调试时用0
+    samples_per_gpu=3,
+    workers_per_gpu=6, #调试时用0
     train=dict(
         type=dataset_type,
         data_root=data_root,
@@ -226,14 +224,14 @@ data = dict(
         test_mode=True,
         box_type_3d='LiDAR'))
 model = dict(
-    type='FCooper',
-    hypes_yaml='configs_CooperativePerception/opencood_configs/point_pillar_fcooper.yaml',
-    # pts_voxel_layer=dict(
-    #     max_num_points=64,
-    #     point_cloud_range=[-50, -50, -5, 50, 50, 3],
-    #     voxel_size=[0.4, 0.4, 4],
-    #     max_voxels=(30000, 40000),
-    #     ),
+    type='OpenCoodDetector',
+    hypes_yaml='configs_CooperativePerception/opencood_configs/point_pillar_v2xvit.yaml',
+    pts_voxel_layer=dict(
+        max_num_points=64,
+        point_cloud_range=[-50, -50, -5, 50, 50, 3],
+        voxel_size=[0.4, 0.4, 4],
+        max_voxels=(30000, 40000),
+        ),
     pts_bbox_head=dict(
         type='Anchor3DHead',
         num_classes=3,

@@ -1,31 +1,30 @@
-name: point_pillar_v2vnet
+name: point_pillar_fcooper
 root_dir: 'opv2v_data_dumping/train'
 validate_dir: 'opv2v_data_dumping/validate'
 
 yaml_parser: "load_point_pillar_params"
 train_params:
   batch_size: &batch_size 2
-  epoches: 60
+  epoches: 15
   eval_freq: 1
   save_freq: 1
   max_cav: &max_cav 2
 
 fusion:
   core_method: 'IntermediateFusionDataset' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
-  args:
-    proj_first: true
+  args: []
 
 # preprocess-related
 preprocess:
   # options: BasePreprocessor, VoxelPreprocessor, BevPreprocessor
   core_method: 'SpVoxelPreprocessor'
   args:
-    voxel_size: &voxel_size [0.25, 0.25, 8]
+    voxel_size: &voxel_size [0.4, 0.4, 8]
     max_points_per_voxel: 32
     max_voxel_train: 32000
     max_voxel_test: 70000
   # lidar range for each individual cav.
-  cav_lidar_range: &cav_lidar [-56, -56, -5, 56, 56, 3]
+  cav_lidar_range: &cav_lidar [-51.2, -51.2, -5, 51.2, 51.2, 3]
 
 data_augment:
   - NAME: random_world_flip
@@ -46,7 +45,7 @@ postprocess:
     w: 1.6
     h: 1.56
     r: [0, 90]
-    feature_stride: 4
+    feature_stride: 2
     num: &achor_num 2
   target_args:
     pos_threshold: 0.6
@@ -58,7 +57,7 @@ postprocess:
 
 # model related
 model:
-  core_method: point_pillar_v2vnet
+  core_method: point_pillar_fcooper
   args:
     voxel_size: *voxel_size
     lidar_range: *cav_lidar
@@ -81,28 +80,17 @@ model:
       num_filters: [64, 128, 256]
       upsample_strides: [1, 2, 4]
       num_upsample_filter: [128, 128, 128]
+    # shrink_header:
+    #   kernal_size: [ 1 ]
+    #   stride: [ 1 ]
+    #   padding: [ 0 ]
+    #   dim: [ 256 ]
+    #   input_dim: 384 # 128 * 3
     shrink_header:
       kernal_size: [ 3 ]
       stride: [ 2 ]
       padding: [ 1 ]
       dim: [ 256 ]
-      input_dim: 384 # 128 * 3
-
-    v2vfusion:
-      voxel_size: *voxel_size
-      downsample_rate: 4
-      num_iteration: 2
-      in_channels: 256
-      gru_flag: true
-      agg_operator: "avg" # max or avg
-      conv_gru:
-        H: 112
-        W: 112
-        num_layers: 1
-        kernel_size: [[3,3]]
-
-
-      # add decoder later
 
 loss:
   core_method: point_pillar_loss
@@ -120,5 +108,5 @@ optimizer:
 lr_scheduler:
   core_method: multistep #step, multistep and Exponential support
   gamma: 0.1
-  step_size: [10, 50, 80]
+  step_size: [10, 15]
 

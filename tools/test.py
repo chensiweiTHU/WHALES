@@ -15,7 +15,8 @@ from mmdet3d.datasets import build_dataloader, build_dataset
 from mmdet3d.models import build_model
 from mmdet.apis import multi_gpu_test, set_random_seed
 from mmdet.datasets import replace_ImageToTensor
-
+import sys
+sys.path.append(os.getcwd())
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -219,7 +220,7 @@ def main():
             broadcast_buffers=False)
         outputs = multi_gpu_test(model, data_loader, args.tmpdir,
                                  args.gpu_collect)
-
+    print('finished gpu testing')
     rank, _ = get_dist_info()
     if rank == 0:
         if args.out:
@@ -229,6 +230,7 @@ def main():
         if args.format_only:
             dataset.format_results(outputs, **kwargs)
         if args.eval:
+            print('start evaluate')
             eval_kwargs = cfg.get('evaluation', {}).copy()
             # hard-code way to remove EvalHook args
             for key in [
