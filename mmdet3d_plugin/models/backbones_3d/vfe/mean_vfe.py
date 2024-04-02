@@ -1,11 +1,13 @@
 import torch
 
 from .vfe_template import VFETemplate
-from mmdet3d.models.builder import VOXEL_ENCODERS
-@VOXEL_ENCODERS.register_module(force=True)
+
+from ...builder import VOXEL_ENCODERS
+
+@VOXEL_ENCODERS.register_module()
 class MeanVFE(VFETemplate):
-    def __init__(self, num_point_features, **kwargs):
-        super().__init__()#model_cfg=model_cfg)
+    def __init__(self, model_cfg, num_point_features, **kwargs):
+        super().__init__(model_cfg=model_cfg)
         self.num_point_features = num_point_features
 
     def get_output_feature_dim(self):

@@ -1,69 +1,3 @@
-# MODEL:
-#     NAME: VoxelNeXt
-
-#     VFE:
-#         NAME: MeanVFE
-
-#     BACKBONE_3D:
-#         NAME: VoxelResBackBone8xVoxelNeXt
-
-#     DENSE_HEAD:
-#         NAME: VoxelNeXtHead
-#         CLASS_AGNOSTIC: False
-#         INPUT_FEATURES: 128
-
-#         CLASS_NAMES_EACH_HEAD: [
-#             ['car'], 
-#             ['truck', 'construction_vehicle'],
-#             ['bus', 'trailer'],
-#             ['barrier'],
-#             ['motorcycle', 'bicycle'],
-#             ['pedestrian', 'traffic_cone'],
-#         ]
-        
-#         SHARED_CONV_CHANNEL: 128
-#         KERNEL_SIZE_HEAD: 3
-        
-#         USE_BIAS_BEFORE_NORM: True
-#         NUM_HM_CONV: 2
-#         SEPARATE_HEAD_CFG:
-#             HEAD_ORDER: ['center', 'center_z', 'dim', 'rot', 'vel']
-#             HEAD_DICT: {
-#                 'center': {'out_channels': 2, 'num_conv': 2},
-#                 'center_z': {'out_channels': 1, 'num_conv': 2},
-#                 'dim': {'out_channels': 3, 'num_conv': 2},
-#                 'rot': {'out_channels': 2, 'num_conv': 2},
-#                 'vel': {'out_channels': 2, 'num_conv': 2},
-#             }
-
-#         TARGET_ASSIGNER_CONFIG:
-#             FEATURE_MAP_STRIDE: 8
-#             NUM_MAX_OBJS: 500
-#             GAUSSIAN_OVERLAP: 0.1
-#             MIN_RADIUS: 2
-
-#         LOSS_CONFIG:
-#             LOSS_WEIGHTS: {
-#                 'cls_weight': 1.0,
-#                 'loc_weight': 0.25,
-#                 'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.2, 0.2, 1.0, 1.0]
-#             }
-
-#         POST_PROCESSING:
-#             SCORE_THRESH: 0.1
-#             POST_CENTER_LIMIT_RANGE: [-61.2, -61.2, -10.0, 61.2, 61.2, 10.0]
-#             MAX_OBJ_PER_SAMPLE: 500
-#             NMS_CONFIG:
-#                 NMS_TYPE: nms_gpu
-#                 NMS_THRESH: 0.2
-#                 NMS_PRE_MAXSIZE: 1000
-#                 NMS_POST_MAXSIZE: 83
-
-#     POST_PROCESSING:
-#         RECALL_THRESH_LIST: [0.3, 0.5, 0.7]
-
-#         EVAL_METRIC: kitti
-
 " convert the config above into a dictionary "
 plugin = True
 plugin_dir = "mmdet3d_plugin/"
@@ -85,10 +19,10 @@ input_modality = dict(
     use_map=False,
     use_external=False)
 class_names = ['Vehicle', 'Pedestrian', 'Cyclist']
-voxel_size=[0.075, 0.075, 0.2]
+voxel_size=[0.2, 0.2, 0.5]
 num_point_features=4
-point_cloud_range=[-54.0, -54.0, -5.0, 54.0, 54.0, 3.0]
-grid_size = [1440, 1440, 40]
+point_cloud_range=[-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
+grid_size = [512, 512, 16]
 # grid_size = (self.point_cloud_range[3:6] - self.point_cloud_range[0:3]) / np.array(config.VOXEL_SIZE)
 # self.grid_size = np.round(grid_size).astype(np.int64)
 model = dict(
@@ -166,30 +100,6 @@ model = dict(
         out_size_factor=8,
         voxel_size=voxel_size[:2],
         code_size=9),
-    loss_cls=dict(type='GaussianFocalLoss', reduction='mean'),
-    loss_bbox=dict(type='L1Loss', reduction='none', loss_weight=0.25),
-    train_cfg=dict(
-            grid_size=grid_size,
-            voxel_size=voxel_size,
-            point_cloud_range=point_cloud_range,
-            out_size_factor=8,
-            dense_reg=1,
-            gaussian_overlap=0.1,
-            max_objs=500,
-            min_radius=2,
-            code_weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.2, 0.2]),
-    test_cfg=dict(
-            post_center_limit_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0],
-            max_per_img=500,
-            max_pool_nms=False,
-            min_radius=[4, 12, 10, 1, 0.85, 0.175],
-            score_threshold=0.1,
-            out_size_factor=8,
-            voxel_size=voxel_size[:2],
-            nms_type='rotate',
-            pre_max_size=1000,
-            post_max_size=83,
-            nms_thr=0.2),
     ),
     #     POST_PROCESSING:
 #         RECALL_THRESH_LIST: [0.3, 0.5, 0.7]
@@ -303,8 +213,8 @@ eval_pipeline = [
                     )
 ]
 data = dict(
-    samples_per_gpu=8,
-    workers_per_gpu=8, #调试时用0
+    samples_per_gpu=24,
+    workers_per_gpu=24, #调试时用0
     train=dict(
         type=dataset_type,
         data_root=data_root,
@@ -336,7 +246,7 @@ data = dict(
         box_type_3d='LiDAR'))
 # runner = dict(type='EpochBasedRunner', max_epochs=36,)
 evaluation = dict(interval=6, pipeline=eval_pipeline)
-optimizer = dict(type='AdamW', lr=1e-3, weight_decay=0.001)
+optimizer = dict(type='AdamW', lr=4e-3, weight_decay=0.001)
 lr_config = dict(policy='CosineAnnealing', warmup="linear",warmup_iters=500, min_lr=1e-7)
 
 

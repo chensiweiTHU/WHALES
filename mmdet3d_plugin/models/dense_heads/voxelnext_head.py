@@ -8,8 +8,13 @@ from ...utils import loss_utils
 from ...utils.spconv_utils import replace_feature, spconv
 import copy
 from easydict import EasyDict
-
-
+from mmdet.core import build_bbox_coder, multi_apply
+from mmdet.models.builder import HEADS#, build_loss
+from mmcv.runner import force_fp32
+from mmdet3d.models.utils import clip_sigmoid
+from mmdet3d.core import (circle_nms, draw_heatmap_gaussian, gaussian_radius,
+                          xywhr2xyxyr)
+# from ..model_utils import model_nms_utils
 class SeparateHead(nn.Module):
     def __init__(self, input_channels, sep_head_dict, kernel_size, init_bias=-2.19, use_bias=False):
         super().__init__()
@@ -46,35 +51,43 @@ class SeparateHead(nn.Module):
 
         return ret_dict
 
-
+@HEADS.register_module(force=True)
 class VoxelNeXtHead(nn.Module):
-    def __init__(self, model_cfg, input_channels, num_class, class_names, grid_size, point_cloud_range, voxel_size,
-                 predict_boxes_when_training=False):
+    def __init__(self, 
+                 model_cfg, input_channels, num_class, class_names, grid_size, point_cloud_range, voxel_size,                 
+                 loss_cls=dict(type='GaussianFocalLoss', reduction='mean'),
+                 loss_bbox=dict(
+                     type='L1Loss', reduction='none', loss_weight=0.25),
+                norm_bbox=True,
+                bbox_coder=None,
+                train_cfg=None,
+                test_cfg=None,
+                predict_boxes_when_training=False):
         super().__init__()
         self.model_cfg = model_cfg
         self.num_class = num_class
         self.grid_size = grid_size
         self.point_cloud_range = torch.Tensor(point_cloud_range).cuda()
         self.voxel_size = torch.Tensor(voxel_size).cuda()
-        self.feature_map_stride = self.model_cfg.TARGET_ASSIGNER_CONFIG.get('FEATURE_MAP_STRIDE', None)
+        self.feature_map_stride = self.model_cfg.target_assigner_config.get('feature_map_stride', None)
 
         self.class_names = class_names
         self.class_names_each_head = []
         self.class_id_mapping_each_head = []
-        self.gaussian_ratio = self.model_cfg.get('GAUSSIAN_RATIO', 1)
-        self.gaussian_type = self.model_cfg.get('GAUSSIAN_TYPE', ['nearst', 'gt_center'])
+        self.gaussian_ratio = self.model_cfg.get('gaussian_ratio', 1)
+        self.gaussian_type = self.model_cfg.get('gaussian_type', ['nearst', 'gt_center'])
         # The iou branch is only used for Waymo dataset
-        self.iou_branch = self.model_cfg.get('IOU_BRANCH', False)
-        if self.iou_branch:
-            self.rectifier = self.model_cfg.get('RECTIFIER')
-            nms_configs = self.model_cfg.POST_PROCESSING.NMS_CONFIG
-            self.nms_configs = [EasyDict(NMS_TYPE=nms_configs.NMS_TYPE, 
-                                    NMS_THRESH=nms_configs.NMS_THRESH[i],
-                                    NMS_PRE_MAXSIZE=nms_configs.NMS_PRE_MAXSIZE[i],
-                                    NMS_POST_MAXSIZE=nms_configs.NMS_POST_MAXSIZE[i]) for i in range(num_class)]
+        self.iou_branch = self.model_cfg.get('iou_branch', False)
+        # if self.iou_branch:
+        #     self.rectifier = self.model_cfg.get('rectifier')
+        #     nms_configs = self.model_cfg.POST_PROCESSING.NMS_CONFIG
+        #     self.nms_configs = [EasyDict(NMS_TYPE=nms_configs.NMS_TYPE, 
+        #                             NMS_THRESH=nms_configs.NMS_THRESH[i],
+        #                             NMS_PRE_MAXSIZE=nms_configs.NMS_PRE_MAXSIZE[i],
+        #                             NMS_POST_MAXSIZE=nms_configs.NMS_POST_MAXSIZE[i]) for i in range(num_class)]
 
-        self.double_flip = self.model_cfg.get('DOUBLE_FLIP', False)
-        for cur_class_names in self.model_cfg.CLASS_NAMES_EACH_HEAD:
+        self.double_flip = self.model_cfg.get('double_flip', False)
+        for cur_class_names in self.model_cfg.class_names_each_head:
             self.class_names_each_head.append([x for x in cur_class_names if x in class_names])
             cur_class_id_mapping = torch.from_numpy(np.array(
                 [self.class_names.index(x) for x in cur_class_names if x in class_names]
@@ -87,10 +100,10 @@ class VoxelNeXtHead(nn.Module):
         kernel_size_head = self.model_cfg.get('KERNEL_SIZE_HEAD', 3)
 
         self.heads_list = nn.ModuleList()
-        self.separate_head_cfg = self.model_cfg.SEPARATE_HEAD_CFG
+        self.separate_head_cfg = self.model_cfg.separate_head_cfg
         for idx, cur_class_names in enumerate(self.class_names_each_head):
-            cur_head_dict = copy.deepcopy(self.separate_head_cfg.HEAD_DICT)
-            cur_head_dict['hm'] = dict(out_channels=len(cur_class_names), num_conv=self.model_cfg.NUM_HM_CONV)
+            cur_head_dict = copy.deepcopy(self.separate_head_cfg.head_dict)
+            cur_head_dict['hm'] = dict(out_channels=len(cur_class_names), num_conv=self.model_cfg.num_hm_conv)
             self.heads_list.append(
                 SeparateHead(
                     input_channels=self.model_cfg.get('SHARED_CONV_CHANNEL', 128),
@@ -102,6 +115,12 @@ class VoxelNeXtHead(nn.Module):
             )
         self.predict_boxes_when_training = predict_boxes_when_training
         self.forward_ret_dict = {}
+        # self.loss_cls = build_loss(loss_cls)
+        # self.loss_bbox = build_loss(loss_bbox)
+        self.bbox_coder = build_bbox_coder(bbox_coder)
+        self.train_cfg = train_cfg
+        self.test_cfg = test_cfg
+        self.norm_bbox = norm_bbox
         self.build_losses()
 
     def build_losses(self):
@@ -114,10 +133,11 @@ class VoxelNeXtHead(nn.Module):
     def assign_targets(self, gt_boxes, num_voxels, spatial_indices, spatial_shape):
         """
         Args:
-            gt_boxes: (B, M, 8)
+            gt_boxes: (B, M, 8) (x y z dx dy dz heading_angle category_id)
         Returns:
         """
-        target_assigner_cfg = self.model_cfg.TARGET_ASSIGNER_CONFIG
+        target_assigner_cfg = self.model_cfg.target_assigner_config
+
 
         batch_size = gt_boxes.shape[0]
         ret_dict = {
@@ -154,10 +174,10 @@ class VoxelNeXtHead(nn.Module):
                     num_classes=len(cur_class_names), gt_boxes=gt_boxes_single_head,
                     num_voxels=num_voxels[bs_idx], spatial_indices=spatial_indices[bs_idx], 
                     spatial_shape=spatial_shape, 
-                    feature_map_stride=target_assigner_cfg.FEATURE_MAP_STRIDE,
-                    num_max_objs=target_assigner_cfg.NUM_MAX_OBJS,
-                    gaussian_overlap=target_assigner_cfg.GAUSSIAN_OVERLAP,
-                    min_radius=target_assigner_cfg.MIN_RADIUS,
+                    feature_map_stride=target_assigner_cfg.feature_map_stride,
+                    num_max_objs=target_assigner_cfg.num_max_objs, #NUM_MAX_OBJS,
+                    gaussian_overlap=target_assigner_cfg.gaussian_overlap, #GAUSSIAN_OVERLAP,
+                    min_radius=target_assigner_cfg.min_radius, #MIN_RADIUS,
                 )
                 heatmap_list.append(heatmap.to(gt_boxes_single_head.device))
                 target_boxes_list.append(ret_boxes.to(gt_boxes_single_head.device))
@@ -245,31 +265,263 @@ class VoxelNeXtHead(nn.Module):
         y = torch.clamp(x.sigmoid(), min=1e-4, max=1 - 1e-4)
         return y
 
+    @force_fp32(apply_to=('preds_dicts'))
+    def loss(self, gt_bboxes_3d, gt_labels_3d, preds_dicts, **kwargs):
+        """Loss function for CenterHead.
+
+        Args:
+            gt_bboxes_3d (list[:obj:`LiDARInstance3DBoxes`]): Ground
+                truth gt boxes.
+            gt_labels_3d (list[torch.Tensor]): Labels of boxes.
+            preds_dicts (dict): Output of forward function.
+
+        Returns:
+            dict[str:torch.Tensor]: Loss of heatmap and bbox of each task.
+        """
+        heatmaps, anno_boxes, inds, masks = self.get_targets(
+            gt_bboxes_3d, gt_labels_3d)
+        loss_dict = dict()
+        for task_id, preds_dict in enumerate(preds_dicts):
+            # heatmap focal loss
+            preds_dict[0]['heatmap'] = clip_sigmoid(preds_dict[0]['heatmap'])
+            num_pos = heatmaps[task_id].eq(1).float().sum().item()
+            loss_heatmap = self.loss_cls(
+                preds_dict[0]['heatmap'],
+                heatmaps[task_id],
+                avg_factor=max(num_pos, 1))
+            target_box = anno_boxes[task_id]
+            # reconstruct the anno_box from multiple reg heads
+            preds_dict[0]['anno_box'] = torch.cat(
+                (preds_dict[0]['reg'], preds_dict[0]['height'],
+                 preds_dict[0]['dim'], preds_dict[0]['rot'],
+                 preds_dict[0]['vel']),
+                dim=1)
+
+            # Regression loss for dimension, offset, height, rotation
+            ind = inds[task_id]
+            num = masks[task_id].float().sum()
+            pred = preds_dict[0]['anno_box'].permute(0, 2, 3, 1).contiguous()
+            pred = pred.view(pred.size(0), -1, pred.size(3))
+            pred = self._gather_feat(pred, ind)
+            mask = masks[task_id].unsqueeze(2).expand_as(target_box).float()
+            isnotnan = (~torch.isnan(target_box)).float()
+            mask *= isnotnan
+
+            code_weights = self.train_cfg.get('code_weights', None)
+            bbox_weights = mask * mask.new_tensor(code_weights)
+            loss_bbox = self.loss_bbox(
+                pred, target_box, bbox_weights, avg_factor=(num + 1e-4))
+            loss_dict[f'task{task_id}.loss_heatmap'] = loss_heatmap
+            loss_dict[f'task{task_id}.loss_bbox'] = loss_bbox
+        return loss_dict
+    def get_targets(self, gt_bboxes_3d, gt_labels_3d):
+        """Generate targets.
+
+        How each output is transformed:
+
+            Each nested list is transposed so that all same-index elements in
+            each sub-list (1, ..., N) become the new sub-lists.
+                [ [a0, a1, a2, ... ], [b0, b1, b2, ... ], ... ]
+                ==> [ [a0, b0, ... ], [a1, b1, ... ], [a2, b2, ... ] ]
+
+            The new transposed nested list is converted into a list of N
+            tensors generated by concatenating tensors in the new sub-lists.
+                [ tensor0, tensor1, tensor2, ... ]
+
+        Args:
+            gt_bboxes_3d (list[:obj:`LiDARInstance3DBoxes`]): Ground
+                truth gt boxes.
+            gt_labels_3d (list[torch.Tensor]): Labels of boxes.
+
+        Returns:
+            Returns:
+                tuple[list[torch.Tensor]]: Tuple of target including \
+                    the following results in order.
+
+                    - list[torch.Tensor]: Heatmap scores.
+                    - list[torch.Tensor]: Ground truth boxes.
+                    - list[torch.Tensor]: Indexes indicating the \
+                        position of the valid boxes.
+                    - list[torch.Tensor]: Masks indicating which \
+                        boxes are valid.
+        """
+        heatmaps, anno_boxes, inds, masks = multi_apply(
+            self.get_targets_single, gt_bboxes_3d, gt_labels_3d)
+        # Transpose heatmaps
+        heatmaps = list(map(list, zip(*heatmaps)))
+        heatmaps = [torch.stack(hms_) for hms_ in heatmaps]
+        # Transpose anno_boxes
+        anno_boxes = list(map(list, zip(*anno_boxes)))
+        anno_boxes = [torch.stack(anno_boxes_) for anno_boxes_ in anno_boxes]
+        # Transpose inds
+        inds = list(map(list, zip(*inds)))
+        inds = [torch.stack(inds_) for inds_ in inds]
+        # Transpose inds
+        masks = list(map(list, zip(*masks)))
+        masks = [torch.stack(masks_) for masks_ in masks]
+        return heatmaps, anno_boxes, inds, masks
+    def get_targets_single(self, gt_bboxes_3d, gt_labels_3d):
+        """Generate training targets for a single sample.
+
+        Args:
+            gt_bboxes_3d (:obj:`LiDARInstance3DBoxes`): Ground truth gt boxes.
+            gt_labels_3d (torch.Tensor): Labels of boxes.
+
+        Returns:
+            tuple[list[torch.Tensor]]: Tuple of target including \
+                the following results in order.
+
+                - list[torch.Tensor]: Heatmap scores.
+                - list[torch.Tensor]: Ground truth boxes.
+                - list[torch.Tensor]: Indexes indicating the position \
+                    of the valid boxes.
+                - list[torch.Tensor]: Masks indicating which boxes \
+                    are valid.
+        """
+        device = gt_labels_3d.device
+        gt_bboxes_3d = torch.cat(
+            (gt_bboxes_3d.gravity_center, gt_bboxes_3d.tensor[:, 3:]),
+            dim=1).to(device)
+        max_objs = self.train_cfg['max_objs'] * self.train_cfg['dense_reg']
+        grid_size = torch.tensor(self.train_cfg['grid_size'])
+        pc_range = torch.tensor(self.train_cfg['point_cloud_range'])
+        voxel_size = torch.tensor(self.train_cfg['voxel_size'])
+
+        feature_map_size = grid_size[:2] // self.train_cfg['out_size_factor']
+
+        # reorganize the gt_dict by tasks
+        task_masks = []
+        flag = 0
+        for class_name in self.class_names_each_head:
+            task_masks.append([
+                torch.where(gt_labels_3d == class_name.index(i) + flag)
+                for i in class_name
+            ])
+            flag += len(class_name)
+
+        task_boxes = []
+        task_classes = []
+        flag2 = 0
+        for idx, mask in enumerate(task_masks):
+            task_box = []
+            task_class = []
+            for m in mask:
+                task_box.append(gt_bboxes_3d[m])
+                # 0 is background for each task, so we need to add 1 here.
+                task_class.append(gt_labels_3d[m] + 1 - flag2)
+            task_boxes.append(torch.cat(task_box, axis=0).to(device))
+            task_classes.append(torch.cat(task_class).long().to(device))
+            flag2 += len(mask)
+        draw_gaussian = draw_heatmap_gaussian
+        heatmaps, anno_boxes, inds, masks = [], [], [], []
+
+        for idx, task_head in enumerate(self.class_names_each_head):
+            heatmap = gt_bboxes_3d.new_zeros(
+                (len(self.class_names_each_head[idx]), feature_map_size[1],
+                 feature_map_size[0]))
+
+            anno_box = gt_bboxes_3d.new_zeros((max_objs, 10),
+                                              dtype=torch.float32)
+
+            ind = gt_labels_3d.new_zeros((max_objs), dtype=torch.int64)
+            mask = gt_bboxes_3d.new_zeros((max_objs), dtype=torch.uint8)
+
+            num_objs = min(task_boxes[idx].shape[0], max_objs)
+
+            for k in range(num_objs):
+                cls_id = task_classes[idx][k] - 1
+
+                width = task_boxes[idx][k][3]
+                length = task_boxes[idx][k][4]
+                width = width / voxel_size[0] / self.train_cfg[
+                    'out_size_factor']
+                length = length / voxel_size[1] / self.train_cfg[
+                    'out_size_factor']
+
+                if width > 0 and length > 0:
+                    radius = gaussian_radius(
+                        (length, width),
+                        min_overlap=self.train_cfg['gaussian_overlap'])
+                    radius = max(self.train_cfg['min_radius'], int(radius))
+
+                    # be really careful for the coordinate system of
+                    # your box annotation.
+                    x, y, z = task_boxes[idx][k][0], task_boxes[idx][k][
+                        1], task_boxes[idx][k][2]
+
+                    coor_x = (
+                        x - pc_range[0]
+                    ) / voxel_size[0] / self.train_cfg['out_size_factor']
+                    coor_y = (
+                        y - pc_range[1]
+                    ) / voxel_size[1] / self.train_cfg['out_size_factor']
+
+                    center = torch.tensor([coor_x, coor_y],
+                                          dtype=torch.float32,
+                                          device=device)
+                    center_int = center.to(torch.int32)
+
+                    # throw out not in range objects to avoid out of array
+                    # area when creating the heatmap
+                    if not (0 <= center_int[0] < feature_map_size[0]
+                            and 0 <= center_int[1] < feature_map_size[1]):
+                        continue
+
+                    draw_gaussian(heatmap[cls_id], center_int, radius)
+
+                    new_idx = k
+                    x, y = center_int[0], center_int[1]
+
+                    assert (y * feature_map_size[0] + x <
+                            feature_map_size[0] * feature_map_size[1])
+
+                    ind[new_idx] = y * feature_map_size[0] + x
+                    mask[new_idx] = 1
+                    # TODO: support other outdoor dataset
+                    vx, vy = task_boxes[idx][k][7:]
+                    rot = task_boxes[idx][k][6]
+                    box_dim = task_boxes[idx][k][3:6]
+                    if self.norm_bbox:
+                        box_dim = box_dim.log()
+                    anno_box[new_idx] = torch.cat([
+                        center - torch.tensor([x, y], device=device),
+                        z.unsqueeze(0), box_dim,
+                        torch.sin(rot).unsqueeze(0),
+                        torch.cos(rot).unsqueeze(0),
+                        vx.unsqueeze(0),
+                        vy.unsqueeze(0)
+                    ])
+
+            heatmaps.append(heatmap)
+            anno_boxes.append(anno_box)
+            masks.append(mask)
+            inds.append(ind)
+        return heatmaps, anno_boxes, inds, masks
     def get_loss(self):
         pred_dicts = self.forward_ret_dict['pred_dicts']
         target_dicts = self.forward_ret_dict['target_dicts']
         batch_index = self.forward_ret_dict['batch_index']
 
         tb_dict = {}
-        loss = 0
+        loss = torch.tensor([0.], device=pred_dicts[0]['hm'].device)
         batch_indices = self.forward_ret_dict['voxel_indices'][:, 0]
         spatial_indices = self.forward_ret_dict['voxel_indices'][:, 1:]
 
         for idx, pred_dict in enumerate(pred_dicts):
             pred_dict['hm'] = self.sigmoid(pred_dict['hm'])
             hm_loss = self.hm_loss_func(pred_dict['hm'], target_dicts['heatmaps'][idx])
-            hm_loss *= self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['cls_weight']
+            hm_loss *= self.model_cfg.loss_config.loss_weights['cls_weight']
 
             target_boxes = target_dicts['target_boxes'][idx]
-            pred_boxes = torch.cat([pred_dict[head_name] for head_name in self.separate_head_cfg.HEAD_ORDER], dim=1)
+            pred_boxes = torch.cat([pred_dict[head_name] for head_name in self.separate_head_cfg.head_order], dim=1)
 
             reg_loss = self.reg_loss_func(
                 pred_boxes, target_dicts['masks'][idx], target_dicts['inds'][idx], target_boxes, batch_index
             )
-            loc_loss = (reg_loss * reg_loss.new_tensor(self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['code_weights'])).sum()
-            loc_loss = loc_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['loc_weight']
-            tb_dict['hm_loss_head_%d' % idx] = hm_loss.item()
-            tb_dict['loc_loss_head_%d' % idx] = loc_loss.item()
+            loc_loss = (reg_loss * reg_loss.new_tensor(self.model_cfg.loss_config.loss_weights['code_weights'])).sum()
+            loc_loss = loc_loss * self.model_cfg.loss_config.loss_weights['loc_weight']
+            tb_dict['hm_loss_head_%d' % idx] = hm_loss
+            tb_dict['loc_loss_head_%d' % idx] = loc_loss
             if self.iou_branch:
                 batch_box_preds = self._get_predicted_boxes(pred_dict, spatial_indices)
                 pred_boxes_for_iou = batch_box_preds.detach()
@@ -278,16 +530,16 @@ class VoxelNeXtHead(nn.Module):
 
                 iou_reg_loss = self.crit_iou_reg(batch_box_preds, target_dicts['masks'][idx], target_dicts['inds'][idx],
                                                     target_dicts['gt_boxes'][idx], batch_indices)
-                iou_weight = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['iou_weight'] if 'iou_weight' in self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS else self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['loc_weight']
+                iou_weight = self.model_cfg.loss_config.loss_weights['iou_weight'] if 'iou_weight' in self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS else self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['loc_weight']
                 iou_reg_loss = iou_reg_loss * iou_weight #self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['loc_weight']
 
                 loss += (hm_loss + loc_loss + iou_loss + iou_reg_loss)
-                tb_dict['iou_loss_head_%d' % idx] = iou_loss.item()
-                tb_dict['iou_reg_loss_head_%d' % idx] = iou_reg_loss.item()
+                tb_dict['iou_loss_head_%d' % idx] = iou_loss
+                tb_dict['iou_reg_loss_head_%d' % idx] = iou_reg_loss
             else:
                 loss += hm_loss + loc_loss
-
-        tb_dict['rpn_loss'] = loss.item()
+        loss = loss.item()
+        # tb_dict['rpn_loss'] = loss.item()
         return loss, tb_dict
 
     def _get_predicted_boxes(self, pred_dict, spatial_indices):
@@ -416,8 +668,8 @@ class VoxelNeXtHead(nn.Module):
         return batch_hm, batch_center, batch_center_z, batch_dim, batch_rot_cos, batch_rot_sin, batch_vel, None, voxel_indices_
 
     def generate_predicted_boxes(self, batch_size, pred_dicts, voxel_indices, spatial_shape):
-        post_process_cfg = self.model_cfg.POST_PROCESSING
-        post_center_limit_range = torch.tensor(post_process_cfg.POST_CENTER_LIMIT_RANGE).cuda().float()
+        post_process_cfg = self.model_cfg.post_processing
+        post_center_limit_range = torch.tensor(post_process_cfg.post_center_limit_range).cuda().float()
 
         ret_dict = [{
             'pred_boxes': [],
@@ -437,7 +689,7 @@ class VoxelNeXtHead(nn.Module):
                 batch_rot_cos = pred_dict['rot'][:, 0].unsqueeze(dim=1)
                 batch_rot_sin = pred_dict['rot'][:, 1].unsqueeze(dim=1)
                 batch_iou = (pred_dict['iou'] + 1) * 0.5 if self.iou_branch else None
-                batch_vel = pred_dict['vel'] if 'vel' in self.separate_head_cfg.HEAD_ORDER else None
+                batch_vel = pred_dict['vel'] if 'vel' in self.separate_head_cfg.head_order else None
                 voxel_indices_ = voxel_indices
 
             final_pred_dicts = centernet_utils.decode_bbox_from_voxels_nuscenes(
@@ -449,9 +701,9 @@ class VoxelNeXtHead(nn.Module):
                 dim=batch_dim, vel=batch_vel, iou=batch_iou,
                 point_cloud_range=self.point_cloud_range, voxel_size=self.voxel_size,
                 feature_map_stride=self.feature_map_stride,
-                K=post_process_cfg.MAX_OBJ_PER_SAMPLE,
+                K=post_process_cfg.max_obj_per_sample,#MAX_OBJ_PER_SAMPLE,
                 #circle_nms=(post_process_cfg.NMS_CONFIG.NMS_TYPE == 'circle_nms'),
-                score_thresh=post_process_cfg.SCORE_THRESH,
+                score_thresh=post_process_cfg.score_thresh,
                 post_center_limit_range=post_center_limit_range
             )
 
@@ -460,7 +712,7 @@ class VoxelNeXtHead(nn.Module):
                 if not self.iou_branch:
                     selected, selected_scores = model_nms_utils.class_agnostic_nms(
                         box_scores=final_dict['pred_scores'], box_preds=final_dict['pred_boxes'],
-                        nms_config=post_process_cfg.NMS_CONFIG,
+                        nms_config=post_process_cfg.nms_config,
                         score_thresh=None
                     )
 
@@ -529,7 +781,9 @@ class VoxelNeXtHead(nn.Module):
         pred_dicts = []
         for head in self.heads_list:
             pred_dicts.append(head(x))
-
+        # list of classes for each head
+        # "center","center_z","dim","rot","vel","hm"
+        # all of the outputs are spare tensors
         if self.training:
             target_dict = self.assign_targets(
                 data_dict['gt_boxes'], num_voxels, spatial_indices, spatial_shape
@@ -555,5 +809,114 @@ class VoxelNeXtHead(nn.Module):
                 data_dict['has_class_labels'] = True
             else:
                 data_dict['final_box_dicts'] = pred_dicts
+        data_dict.update(self.forward_ret_dict)
 
         return data_dict
+
+    def post_processing(self, batch_dict):
+        """
+        Args:
+            batch_dict:
+                batch_size:
+                batch_cls_preds: (B, num_boxes, num_classes | 1) or (N1+N2+..., num_classes | 1)
+                                or [(B, num_boxes, num_class1), (B, num_boxes, num_class2) ...]
+                multihead_label_mapping: [(num_class1), (num_class2), ...]
+                batch_box_preds: (B, num_boxes, 7+C) or (N1+N2+..., 7+C)
+                cls_preds_normalized: indicate whether batch_cls_preds is normalized
+                batch_index: optional (N1+N2+...)
+                has_class_labels: True/False
+                roi_labels: (B, num_rois)  1 .. num_classes
+                batch_pred_labels: (B, num_boxes, 1)
+        Returns:
+
+        """
+        post_process_cfg = self.model_cfg.post_processing
+        batch_size = batch_dict['batch_size']
+        recall_dict = {}
+        pred_dicts = []
+        for index in range(batch_size):
+            if batch_dict.get('batch_index', None) is not None:
+                assert batch_dict['batch_box_preds'].shape.__len__() == 2
+                batch_mask = (batch_dict['batch_index'] == index)
+            else:
+                assert batch_dict['batch_box_preds'].shape.__len__() == 3
+                batch_mask = index
+
+            box_preds = batch_dict['batch_box_preds'][batch_mask]
+            src_box_preds = box_preds
+            
+            if not isinstance(batch_dict['batch_cls_preds'], list):
+                cls_preds = batch_dict['batch_cls_preds'][batch_mask]
+
+                src_cls_preds = cls_preds
+                assert cls_preds.shape[1] in [1, self.num_class]
+
+                if not batch_dict['cls_preds_normalized']:
+                    cls_preds = torch.sigmoid(cls_preds)
+            else:
+                cls_preds = [x[batch_mask] for x in batch_dict['batch_cls_preds']]
+                src_cls_preds = cls_preds
+                if not batch_dict['cls_preds_normalized']:
+                    cls_preds = [torch.sigmoid(x) for x in cls_preds]
+
+            if post_process_cfg.nms_config.multi_classes_nms: # nms_config.multi_classes_nms:
+                if not isinstance(cls_preds, list):
+                    cls_preds = [cls_preds]
+                    multihead_label_mapping = [torch.arange(1, self.num_class, device=cls_preds[0].device)]
+                else:
+                    multihead_label_mapping = batch_dict['multihead_label_mapping']
+
+                cur_start_idx = 0
+                pred_scores, pred_labels, pred_boxes = [], [], []
+                for cur_cls_preds, cur_label_mapping in zip(cls_preds, multihead_label_mapping):
+                    assert cur_cls_preds.shape[1] == len(cur_label_mapping)
+                    cur_box_preds = box_preds[cur_start_idx: cur_start_idx + cur_cls_preds.shape[0]]
+                    cur_pred_scores, cur_pred_labels, cur_pred_boxes = model_nms_utils.multi_classes_nms(
+                        cls_scores=cur_cls_preds, box_preds=cur_box_preds,
+                        nms_config=post_process_cfg.nms_config,
+                        score_thresh=post_process_cfg.score_thresh# SCORE_THRESH
+                    )
+                    cur_pred_labels = cur_label_mapping[cur_pred_labels]
+                    pred_scores.append(cur_pred_scores)
+                    pred_labels.append(cur_pred_labels)
+                    pred_boxes.append(cur_pred_boxes)
+                    cur_start_idx += cur_cls_preds.shape[0]
+
+                final_scores = torch.cat(pred_scores, dim=0)
+                final_labels = torch.cat(pred_labels, dim=0)
+                final_boxes = torch.cat(pred_boxes, dim=0)
+            else:
+                cls_preds, label_preds = torch.max(cls_preds, dim=-1)
+                if batch_dict.get('has_class_labels', False):
+                    label_key = 'roi_labels' if 'roi_labels' in batch_dict else 'batch_pred_labels'
+                    label_preds = batch_dict[label_key][index]
+                else:
+                    label_preds = label_preds + 1 
+                selected, selected_scores = model_nms_utils.class_agnostic_nms(
+                    box_scores=cls_preds, box_preds=box_preds,
+                    nms_config=post_process_cfg.nms_config,
+                    score_thresh=post_process_cfg.score_thresh
+                )
+
+                if post_process_cfg.output_raw_score: # OUTPUT_RAW_SCORE:
+                    max_cls_preds, _ = torch.max(src_cls_preds, dim=-1)
+                    selected_scores = max_cls_preds[selected]
+
+                final_scores = selected_scores
+                final_labels = label_preds[selected]
+                final_boxes = box_preds[selected]
+                    
+            recall_dict = self.generate_recall_record(
+                box_preds=final_boxes if 'rois' not in batch_dict else src_box_preds,
+                recall_dict=recall_dict, batch_index=index, data_dict=batch_dict,
+                thresh_list=post_process_cfg.recall_thresh_list #RECALL_THRESH_LIST
+            )        
+
+            record_dict = {
+                'pred_boxes': final_boxes,
+                'pred_scores': final_scores,
+                'pred_labels': final_labels
+            }
+            pred_dicts.append(record_dict)
+
+        return pred_dicts, recall_dict

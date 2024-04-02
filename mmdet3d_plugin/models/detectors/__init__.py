@@ -19,9 +19,10 @@ from .OpenCood_detector import OpenCoodDetector
 from .FCooper import FCooper
 from .V2VNet import V2VNet
 from .OpenCood_point_pillar import PointPillarOpenCOOD
+from .voxelnext import VoxelNeXt
 __all__ = [
     'MVXTwoStageDetector', 'VoxelNet', 'OpenCoodDetector', 'DynamicMVXFasterRCNN', 'MVXFasterRCNN',
-    'FCooper', 'V2VNet', 'PointPillarOpenCOOD'
+    'FCooper', 'V2VNet', 'PointPillarOpenCOOD', 'VoxelNeXt'
 ]
 # __all__ = [
 #     'Base3DDetector', 'VoxelNet', 'DynamicVoxelNet', 'MVXTwoStageDetector',
