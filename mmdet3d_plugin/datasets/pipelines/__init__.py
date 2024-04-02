@@ -1,8 +1,9 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 from mmdet.datasets.pipelines import Compose
 from mmdet3d.datasets.pipelines.dbsampler import DataBaseSampler
-from mmdet3d.datasets.pipelines.formating import Collect3D, DefaultFormatBundle, DefaultFormatBundle3D
-from mmdet3d.datasets.pipelines.loading import (LoadAnnotations3D, LoadImageFromFileMono3D,
+from .formating import Collect3D, DefaultFormatBundle, DefaultFormatBundle3D
+#from mmdet3d.datasets.pipelines.formating import Collect3D, DefaultFormatBundle, DefaultFormatBundle3D
+from .loading import (LoadAnnotations3D, LoadImageFromFileMono3D,
                       LoadMultiViewImageFromFiles, LoadPointsFromFile,
                       LoadPointsFromMultiSweeps, NormalizePointsColor,
                       PointSegClassMapping)
