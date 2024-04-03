@@ -7,8 +7,8 @@ import os
 from mmdet3d.core import bbox3d2result, merge_aug_bboxes_3d
 from mmdet3d.ops import Voxelization
 from mmdet.models import DETECTORS
-from .. import builder
-from .single_stage import SingleStage3DDetector
+from mmdet3d.models import builder
+from mmdet3d.models.detectors.single_stage import SingleStage3DDetector
 
 class ReduceInfTC(nn.Module):
     def __init__(self, channel):

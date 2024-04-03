@@ -8,6 +8,7 @@ from mmdet3d.datasets.kitti_mono_dataset import KittiMonoDataset
 from mmdet3d.datasets.lyft_dataset import LyftDataset
 from .nuscenes_dataset import NuScenesDataset
 from .dolphins_dataset import DolphinsDataset
+from .v2x_dataset import V2XDataset
 from mmdet3d.datasets.nuscenes_mono_dataset import NuScenesMonoDataset
 # yapf: disable
 from mmdet3d.datasets.pipelines import (BackgroundPointsFilter, GlobalAlignment,
@@ -39,5 +40,5 @@ __all__ = [
     'Custom3DDataset', 'Custom3DSegDataset', 'LoadPointsFromMultiSweeps',
     'WaymoDataset', 'BackgroundPointsFilter', 'VoxelBasedPointSampler',
     'get_loading_pipeline', 'RandomDropPointsColor', 'RandomJitterPoints',
-    'ObjectNameFilter'
+    'ObjectNameFilter', 'V2XDataset'
 ]

@@ -1,7 +1,7 @@
 from functools import partial
 import torch
 import torch.nn as nn
-from ..builder import BACKBONES
+from mmdet3d.models.builder import BACKBONES
 from ...utils.spconv_utils import replace_feature, spconv
 import numpy as np
 

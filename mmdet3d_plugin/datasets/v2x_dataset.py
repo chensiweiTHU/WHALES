@@ -10,7 +10,7 @@ from os import path as osp
 import json
 
 from mmdet.datasets import DATASETS
-from ..core import show_multi_modality_result, show_result
+from mmdet3d.core import show_multi_modality_result, show_result
 from mmdet3d.core.bbox import (Box3DMode, CameraInstance3DBoxes, Coord3DMode,
                          LiDARInstance3DBoxes, points_cam2img)
 from mmdet3d.datasets.custom_3d import Custom3DDataset

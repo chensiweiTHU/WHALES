@@ -7,7 +7,7 @@ from torch.nn import functional as F
 from mmdet3d.core import bbox3d2result, merge_aug_bboxes_3d
 from mmdet3d.ops import Voxelization
 from mmdet.models import DETECTORS, build_backbone, build_neck
-from .. import builder
+from mmdet3d.models import builder
 from mmdet3d.models.detectors.single_stage import SingleStage3DDetector
 import copy
 import random
