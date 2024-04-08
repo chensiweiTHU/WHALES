@@ -23,3 +23,5 @@ python eval.py \
   --pred-class car \
   --sensortype lidar \
   --extended-range 0 -39.68 -3 100 39.68 1
+
+  ## bash scripts/lidar_feature_flow.sh 0 ~/Projects/v2x-agents 0 'OriginFeat'
