@@ -8,7 +8,7 @@ data_info_val_path = './data_process/dair-v2x/flow_data_jsons/flow_data_info_val
 
 class_names = ['Pedestrian', 'Cyclist', 'Car','other']
 point_cloud_range = [0, -46.08, -3, 92.16, 46.08, 1]
-voxel_size = [0.04, 0.04, 0.5]
+voxel_size = [0.08, 0.08, 0.25]
 l = int((point_cloud_range[3]-point_cloud_range[0])/voxel_size[0])
 h = int((point_cloud_range[4]-point_cloud_range[1])/voxel_size[1])
 output_shape = [h, l]
@@ -19,7 +19,7 @@ z_center_car = -2.66
 # voxel_size=[0.2, 0.2, 0.5]
 num_point_features=4
 # point_cloud_range=[-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
-grid_size = [2304, 2304, 8]
+grid_size = [1152,1152,16]
 
 model = dict(
     type='VoxelNeXtCoopertive',
@@ -71,7 +71,7 @@ model = dict(
         ),
         post_processing=dict(
             score_thresh=0.1,
-            post_center_limit_range=[-15.12, -61.2, -4, 107.28, 61.2, 2],
+            post_center_limit_range=[0, -46.08, -3, 92.16, 46.08, 0],
             max_obj_per_sample=500,
             nms_config=dict(
                 nms_type='nms_gpu',
@@ -90,7 +90,7 @@ model = dict(
     bbox_coder=dict(
         type='CenterPointBBoxCoder',
         pc_range=point_cloud_range,
-        post_center_range=[-15.12, -61.2, -4, 107.28, 61.2, 2],
+        post_center_range=[0, -46.08, -3, 92.16, 46.08, 0],
         max_num=500,
         score_threshold=0.1,
         out_size_factor=8,
@@ -105,13 +105,14 @@ model = dict(
         recall_thresh_list=[0.3, 0.5, 0.7],
         eval_metric='kitti'
     ),
-    single=False
+    single=False,
+    raw=True
 )
 file_client_args = dict(backend='disk')
 
 data = dict(
-    samples_per_gpu=8,
-    workers_per_gpu=8,
+    samples_per_gpu=16,
+    workers_per_gpu=16,
     train=dict(
         type='RepeatDataset',
         times=2,
@@ -323,13 +324,13 @@ momentum_config = dict(
     cyclic_times=1,
     step_ratio_up=0.4)
 runner = dict(type='EpochBasedRunner', max_epochs=40)
-checkpoint_config = dict(interval=1)
+checkpoint_config = dict(interval=2)
 log_config = dict(
     interval=10,
     hooks=[dict(type='TextLoggerHook'),
            dict(type='TensorboardLoggerHook')])
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-load_from = './work_dirs/voxel_next_dairv2x/epoch_20.pth'
+load_from = None #'./work_dirs/voxel_next_dairv2x/epoch_20.pth'
 resume_from = None
 workflow = [('train', 1)]

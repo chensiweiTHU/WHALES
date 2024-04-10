@@ -105,13 +105,13 @@ model = dict(
         recall_thresh_list=[0.3, 0.5, 0.7],
         eval_metric='kitti'
     ),
-    single=False
+    single=True
 )
 file_client_args = dict(backend='disk')
 
 data = dict(
-    samples_per_gpu=8,
-    workers_per_gpu=8,
+    samples_per_gpu=16,
+    workers_per_gpu=16,
     train=dict(
         type='RepeatDataset',
         times=2,
@@ -323,13 +323,13 @@ momentum_config = dict(
     cyclic_times=1,
     step_ratio_up=0.4)
 runner = dict(type='EpochBasedRunner', max_epochs=40)
-checkpoint_config = dict(interval=1)
+checkpoint_config = dict(interval=2)
 log_config = dict(
     interval=10,
     hooks=[dict(type='TextLoggerHook'),
            dict(type='TensorboardLoggerHook')])
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-load_from = './work_dirs/voxel_next_dairv2x/epoch_20.pth'
+load_from = None
 resume_from = None
 workflow = [('train', 1)]

@@ -323,7 +323,7 @@ momentum_config = dict(
     cyclic_times=1,
     step_ratio_up=0.4)
 runner = dict(type='EpochBasedRunner', max_epochs=40)
-checkpoint_config = dict(interval=1)
+checkpoint_config = dict(interval=2)
 log_config = dict(
     interval=10,
     hooks=[dict(type='TextLoggerHook'),

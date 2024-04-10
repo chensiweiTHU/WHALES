@@ -9,7 +9,9 @@ from mmcv.runner import force_fp32
 from torch.nn import functional as F
 from pcdet.ops.iou3d_nms import iou3d_nms_utils
 import copy
+import spconv.pytorch.functional as spF
 import spconv.pytorch as spconv
+
 import numpy as np
 # from mmdet3d.core.bbox import LiDARInstance3DBoxes
 @DETECTORS.register_module(force=True)
@@ -17,10 +19,13 @@ class VoxelNeXtCoopertive(Base3DDetector):
     """this is the cooperaivte version of VoxelNeXt, 
     which is used to fuse the results of multiple agents in DAIR-V2X dataset."""
     def __init__(self, pts_voxel_layer,pts_voxel_encoder,
-                  backbone_3d, dense_head, post_processing, **kwargs ):
+                  backbone_3d, dense_head, post_processing,single=False,proj_first=True,raw=False, **kwargs ):
                   #num_class, dataset):
         super(VoxelNeXtCoopertive,self).__init__()
         # self.module_list = self.build_networks()
+        self.single = single
+        self.proj_first = proj_first
+        self.raw = raw
         if pts_voxel_layer:
             self.pts_voxel_layer = Voxelization(**pts_voxel_layer)
         if pts_voxel_encoder:
@@ -28,6 +33,8 @@ class VoxelNeXtCoopertive(Base3DDetector):
                 pts_voxel_encoder)
         if backbone_3d:
             self.backbone_3d = builder.build_backbone(backbone_3d)
+        if not self.single and not self.raw and self.backbone_3d:
+            self.inf_backbone_3d = builder.build_backbone(backbone_3d)
         if dense_head:
             self.dense_head = builder.build_head(dense_head)
         if post_processing:
@@ -69,16 +76,14 @@ class VoxelNeXtCoopertive(Base3DDetector):
         voxel_features = self.pts_voxel_encoder(batch_dict)
         # batch_size = coors[-1, 0] + 1
         # x = self.pts_middle_encoder(voxel_features, coors, batch_size)
-        x = self.backbone_3d(voxel_features)
-
-        return x
+        return voxel_features
     def extract_img_feat(self, img, img_metas):
         return None
     def extract_feat(self, points, img, img_metas):
         """Extract features from images and points."""
         img_feats = self.extract_img_feat(img, img_metas)
-        pts_feats = self.extract_pts_feat(points, img_feats, img_metas)
-        return (img_feats, pts_feats)
+        voxel_feats = self.extract_pts_feat(points, img_feats, img_metas)
+        return (img_feats, voxel_feats)
     def forward_train(self,
                       points=None,
                       img_metas=None,
@@ -113,11 +118,49 @@ class VoxelNeXtCoopertive(Base3DDetector):
         Returns:
             dict: Losses of different branches.
         """
-        img_feats, pts_feats = self.extract_feat(
+        if not self.single and self.proj_first:
+            "project inf points to vehicle coordinate system in raw data"
+            device = points[0].device
+            for i in range(len(infrastructure_points)):
+                pcd_range = torch.tensor(self.pts_voxel_layer.point_cloud_range).to(device)
+                rotatation_matrix = torch.tensor(img_metas[i]['inf2veh']['rotation']).to(device).float()
+                translation = torch.tensor(img_metas[i]['inf2veh']['translation']).to(device).float()
+                transfrom_matrix = torch.zeros((4,4)).to(device)
+                transfrom_matrix[0:3,0:3] = rotatation_matrix
+                transfrom_matrix[0:3,3] = translation.T
+                transfrom_matrix[3,3] = 1
+                points_inf_feat = infrastructure_points[i][:,3:]
+                points_inf = infrastructure_points[i][:,:3]
+                points_inf = torch.cat([points_inf,torch.ones(points_inf.shape[0],1).to(device)],dim=1)
+                points_inf = transfrom_matrix@points_inf.T
+                points_inf = points_inf.T
+                points_inf = points_inf[:,0:3]
+                mask = (points_inf[:,0] > pcd_range[0]) &\
+                    (points_inf[:,0] < pcd_range[3]) &\
+                    (points_inf[:,1] > pcd_range[1]) &\
+                    (points_inf[:,1] < pcd_range[4]) &\
+                    (points_inf[:,2] > pcd_range[2]) &\
+                    (points_inf[:,2] < pcd_range[5])
+                points_inf = points_inf[mask]
+                points_inf_feat = points_inf_feat[mask]
+                if len(points_inf) == 0:
+                    points_inf = torch.zeros((1,3)).to(device)
+                    points_inf_feat = torch.zeros((1,points_inf_feat.shape[1])).to(device)
+                infrastructure_points[i] = torch.cat([points_inf,points_inf_feat],dim=1)
+                if self.raw:
+                    points[i] = torch.cat([points[i],infrastructure_points[i]],dim=0)
+
+        img_feats, voxel_feats = self.extract_feat(
             points, img=img, img_metas=img_metas)
-        img_feats_inf, pts_feats_inf = self.extract_feat(
+        pts_feats = self.backbone_3d(voxel_feats)
+        if not self.single and not self.raw:
+            img_feats_inf, voxel_feats_inf = self.extract_feat(
             infrastructure_points, img=infrastructure_img, img_metas=img_metas)
-        pts_feats = self.feature_fusion(pts_feats, pts_feats_inf, img_metas)
+            pts_feats_inf = self.inf_backbone_3d(voxel_feats_inf)
+            if self.proj_first:
+                pts_feats = self.feature_fusion_cat(pts_feats, pts_feats_inf, img_metas)
+            else:
+                pts_feats = self.feature_fusion_warp(pts_feats, pts_feats_inf, img_metas)
         batch_dict = pts_feats
         "fuse gt_bboxes_3d to BXMX9"
         max_box_num = max([len(bboxes) for bboxes in gt_bboxes_3d])
@@ -130,8 +173,10 @@ class VoxelNeXtCoopertive(Base3DDetector):
         # bboxes_3d_tensor = bboxes_3d_tensor[:, :, :7]
         # attach gt_labels_3d to tensor
         "first filter out -1 labels in DAIR-V2X dataset by FFNet"
+        # for i,l in enumerate(gt_labels_3d):
+        #     gt_labels_3d[i] = l[l != -1]
         for i,l in enumerate(gt_labels_3d):
-            gt_labels_3d[i] = l[l != -1]
+            gt_labels_3d[i][l == -1] = self.dense_head.num_class-1
         gt_labels_3d_tensor = torch.stack([
             torch.cat([l.float()+1, torch.zeros(max_box_num - len(l)).to(l.device)])
             for l in gt_labels_3d
@@ -149,9 +194,64 @@ class VoxelNeXtCoopertive(Base3DDetector):
     def aug_test(self):
         pass
 
-    def simple_test(self,points=None,img_metas=None,img=None,**kwargs):
-        img_feats, pts_feats = self.extract_feat(
-        points, img=img, img_metas=img_metas)
+    def simple_test(self,points=None,img_metas=None,img=None,infrastructure_points=None,infrastructure_img=None,**kwargs):
+        if not self.single and self.proj_first:
+            "project inf points to vehicle coordinate system in raw data"
+            device = points[0].device
+            for i in range(len(infrastructure_points)):
+                if not isinstance(infrastructure_points[0],torch.Tensor):
+                    if isinstance(infrastructure_points[0],list):
+                        infrastructure_points = infrastructure_points[0]
+                pcd_range = torch.tensor(self.pts_voxel_layer.point_cloud_range).to(device)
+                rotatation_matrix = torch.tensor(img_metas[i]['inf2veh']['rotation']).to(device).float()
+                translation = torch.tensor(img_metas[i]['inf2veh']['translation']).to(device).float()
+                transfrom_matrix = torch.zeros((4,4)).to(device)
+                transfrom_matrix[0:3,0:3] = rotatation_matrix
+                transfrom_matrix[0:3,3] = translation.T
+                transfrom_matrix[3,3] = 1
+                points_inf_feat = infrastructure_points[i][:,3:]
+                points_inf = infrastructure_points[i][:,:3]
+                points_inf = torch.cat([points_inf,torch.ones(points_inf.shape[0],1).to(device)],dim=1)
+                points_inf = transfrom_matrix@points_inf.T
+                points_inf = points_inf.T
+                points_inf = points_inf[:,0:3]
+                mask = (points_inf[:,0] > pcd_range[0]) &\
+                    (points_inf[:,0] < pcd_range[3]) &\
+                    (points_inf[:,1] > pcd_range[1]) &\
+                    (points_inf[:,1] < pcd_range[4]) &\
+                    (points_inf[:,2] > pcd_range[2]) &\
+                    (points_inf[:,2] < pcd_range[5])
+                points_inf = points_inf[mask]
+                points_inf_feat = points_inf_feat[mask]
+                if len(points_inf) == 0:
+                    points_inf = torch.zeros((1,3)).to(device)
+                    points_inf_feat = torch.zeros((1,points_inf_feat.shape[1])).to(device)
+                infrastructure_points[i] = torch.cat([points_inf,points_inf_feat],dim=1)
+                if self.raw:
+                    points[i] = torch.cat([points[i],infrastructure_points[i]],dim=0)
+        
+        img_feats, voxel_feats = self.extract_feat(
+            points, img=img, img_metas=img_metas)
+        pts_feats = self.backbone_3d(voxel_feats)
+        if not self.single and not self.raw:        
+            "if infrastructure_points[0] is not torch.Tensor"
+            if not isinstance(infrastructure_points[0],torch.Tensor):
+                if isinstance(infrastructure_points[0],list):
+                    infrastructure_points = infrastructure_points[0]
+                else:
+                    pts_feats_inf = None
+            img_feats_inf, voxel_feats_inf = self.extract_feat(
+            infrastructure_points, img=infrastructure_img, img_metas=img_metas)
+            pts_feats_inf = self.inf_backbone_3d(voxel_feats_inf)
+            if self.proj_first:
+                pts_feats = self.feature_fusion_cat(pts_feats, pts_feats_inf, img_metas)
+            else:
+                pts_feats = self.feature_fusion_warp(pts_feats, pts_feats_inf, img_metas)
+
+        # img_feats_inf, pts_feats_inf = self.extract_feat(
+        #     infrastructure_points, img=infrastructure_img, img_metas=img_metas)
+        # if pts_feats_inf is not None:
+        #     pts_feats = self.feature_fusion(pts_feats, pts_feats_inf, img_metas)
         batch_dict = pts_feats
         output_dict = self.dense_head(batch_dict)
         # pred_dicts, recall_dicts = self.post_processing(batch_dict)
@@ -167,8 +267,30 @@ class VoxelNeXtCoopertive(Base3DDetector):
             result_box['labels_3d'] = bbox['pred_labels'].cpu()
             result_list[i]['pts_bbox'] = result_box
             result_list[i]['img_metas'] = img_metas
+            result_list[i]['boxes_3d'] = result_box['boxes_3d']
+            result_list[i]['scores_3d'] = result_box['scores_3d']
+            result_list[i]['labels_3d'] = result_box['labels_3d']
         return result_list  
-    def feature_fusion(self,pts_feats, pts_feats_inf, img_metas):
+
+    def feature_fusion_cat(self,pts_feats, pts_feats_inf, img_metas):
+        batch_size = pts_feats['batch_size']
+        # pts_feats['encoded_spconv_tensor'] = pts_feats['encoded_spconv_tensor']\
+        # + pts_feats_inf['encoded_spconv_tensor']
+        pts_feats['encoded_spconv_tensor']=spF.sparse_add(pts_feats['encoded_spconv_tensor'],pts_feats_inf['encoded_spconv_tensor'])
+        # spF.sparse_add_hash_based(pts_feats['encoded_spconv_tensor'],pts_feats_inf['encoded_spconv_tensor'])
+        # grid_size = torch.tensor(pts_feats_inf['encoded_spconv_tensor']\
+        #                          .spatial_shape[::-1])
+        # fused_feat = torch.cat([pts_feats['encoded_spconv_tensor'].features,\
+        #         pts_feats_inf['encoded_spconv_tensor'].features],dim=0)
+        # fused_coords = torch.cat([pts_feats['encoded_spconv_tensor'].indices,\
+        #         pts_feats_inf['encoded_spconv_tensor'].indices],dim=0)
+        # fused_sparse_feat = spconv.SparseConvTensor(fused_feat,fused_coords,[grid_size[1],grid_size[0]],batch_size)
+        # pts_feats['encoded_spconv_tensor'] = fused_sparse_feat
+        
+        return pts_feats
+
+
+    def feature_fusion_warp(self,pts_feats, pts_feats_inf, img_metas):
         voxel_coords_inf = copy.deepcopy(pts_feats_inf['encoded_spconv_tensor'].indices)#copy.deepcopy(pts_feats_inf['voxel_coords'])
         voxel_coords_inf = voxel_coords_inf.float()
         device = voxel_coords_inf.device
@@ -191,11 +313,14 @@ class VoxelNeXtCoopertive(Base3DDetector):
             # warp_feat_trans = F.grid_sample(inf_feature, grid_r_t, mode='bilinear', align_corners=False)
             # wrap_feats_ii.append(warp_feat_trans)
             "get the rotation and translation matrix"
-            rotatation_matrix = torch.tensor(img_metas[i]['inf2veh']['rotation']).to(device)
-            translation = torch.tensor(img_metas[i]['inf2veh']['translation']).to(device)
+            rotatation_matrix = torch.tensor(img_metas[i]['inf2veh']['rotation']).to(device).float()
+            translation = torch.tensor(img_metas[i]['inf2veh']['translation']).to(device).float()
             "only in xy plane"
             rotatation_matrix = rotatation_matrix[0:2,0:2]
             translation = translation[0:2]
+            transform_matrix = torch.zeros((3,3)).to(device)
+            transform_matrix[0:2,0:2] = rotatation_matrix
+            transform_matrix[0:2,2] = translation.T
             validate = False
             #######
             if validate:
@@ -233,16 +358,22 @@ class VoxelNeXtCoopertive(Base3DDetector):
             "rotate and translate"
             voxel_coords_inf_b = copy.deepcopy(voxel_coords_inf[voxel_coords_inf[:,0]==i])
             feats_inf_b = feats_inf[voxel_coords_inf[:,0]==i]
-            voxel_coords_inf_b[:,1:] = voxel_coords_inf_b[:,1:] - translation.T
-            voxel_coords_inf_b[:,1:] = voxel_coords_inf_b[:,1:].matmul(rotatation_matrix)
-
-            "from float coords to int indice"
-            voxel_coords_inf_b[:,1:] = (voxel_coords_inf_b[:,1:] - pcd_range[0:2]) / voxel_size - 0.5
-            "mask the voxels out of ego vehicle's range"
-            mask = (voxel_coords_inf_b[:,1] >= 0) & (voxel_coords_inf_b[:,1] < grid_size[0]) & \
-                (voxel_coords_inf_b[:,2] >= 0) & (voxel_coords_inf_b[:,2] < grid_size[1])
+            voxel_coords_inf_b = voxel_coords_inf_b[:,1:] # Nx2
+            voxel_coords_inf_b = torch.cat([voxel_coords_inf_b,torch.ones(voxel_coords_inf_b.shape[0],1).to(device)],dim=1)
+            voxel_coords_inf_b = transform_matrix.matmul(voxel_coords_inf_b.T).T # ((3X3)X(3XN))' = Nx3
+            voxel_coords_inf_b = voxel_coords_inf_b[:,0:2]
+            voxel_coords_inf_b = torch.cat([i*torch.ones(voxel_coords_inf_b.shape[0],1).to(device),voxel_coords_inf_b],dim=1)
+            # voxel_coords_inf_b[:,1:] = voxel_coords_inf_b[:,1:] - translation.T
+            # voxel_coords_inf_b[:,1:] = voxel_coords_inf_b[:,1:].matmul(rotatation_matrix)
+            "mask the voxels out of ego vehicle's range"            
+            mask = (voxel_coords_inf_b[:,1] >= 0) & (voxel_coords_inf_b[:,1] < pcd_range[3]) & \
+                (voxel_coords_inf_b[:,2] >= 0) & (voxel_coords_inf_b[:,2] < pcd_range[4])
             voxel_coords_inf_b = voxel_coords_inf_b[mask]
             feats_inf_b = feats_inf_b[mask]
+            "from float coords to int indice"
+            voxel_coords_inf_b[:,1:] = (voxel_coords_inf_b[:,1:] - pcd_range[0:2]) / voxel_size - 0.5
+
+            # voxel_coords_inf_b = voxel_coords_inf_b.int()
             voxel_coords_inf_b = voxel_coords_inf_b[:,[0,2,1]].int()
             fused_feat.append(feats_inf_b)
             fused_coords.append(voxel_coords_inf_b)
