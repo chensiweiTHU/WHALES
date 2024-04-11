@@ -11,7 +11,8 @@ from pcdet.ops.iou3d_nms import iou3d_nms_utils
 import copy
 import spconv.pytorch.functional as spF
 import spconv.pytorch as spconv
-
+from ...utils.spconv_utils import replace_feature
+import torch.nn as nn
 import numpy as np
 # from mmdet3d.core.bbox import LiDARInstance3DBoxes
 @DETECTORS.register_module(force=True)
@@ -35,6 +36,12 @@ class VoxelNeXtCoopertive(Base3DDetector):
             self.backbone_3d = builder.build_backbone(backbone_3d)
         if not self.single and not self.raw and self.backbone_3d:
             self.inf_backbone_3d = builder.build_backbone(backbone_3d)
+        self.fuse_net = spconv.SparseSequential(
+            spconv.SubMConv2d(256, 128, 3, stride=1, padding=1, bias=True),
+            nn.BatchNorm1d(128),
+            nn.ReLU(True),
+        )
+
         if dense_head:
             self.dense_head = builder.build_head(dense_head)
         if post_processing:
@@ -158,7 +165,7 @@ class VoxelNeXtCoopertive(Base3DDetector):
             infrastructure_points, img=infrastructure_img, img_metas=img_metas)
             pts_feats_inf = self.inf_backbone_3d(voxel_feats_inf)
             if self.proj_first:
-                pts_feats = self.feature_fusion_cat(pts_feats, pts_feats_inf, img_metas)
+                pts_feats = self.feature_fusion(pts_feats, pts_feats_inf, img_metas)
             else:
                 pts_feats = self.feature_fusion_warp(pts_feats, pts_feats_inf, img_metas)
         batch_dict = pts_feats
@@ -244,7 +251,7 @@ class VoxelNeXtCoopertive(Base3DDetector):
             infrastructure_points, img=infrastructure_img, img_metas=img_metas)
             pts_feats_inf = self.inf_backbone_3d(voxel_feats_inf)
             if self.proj_first:
-                pts_feats = self.feature_fusion_cat(pts_feats, pts_feats_inf, img_metas)
+                pts_feats = self.feature_fusion(pts_feats, pts_feats_inf, img_metas)
             else:
                 pts_feats = self.feature_fusion_warp(pts_feats, pts_feats_inf, img_metas)
 
@@ -272,7 +279,7 @@ class VoxelNeXtCoopertive(Base3DDetector):
             result_list[i]['labels_3d'] = result_box['labels_3d']
         return result_list  
 
-    def feature_fusion_cat(self,pts_feats, pts_feats_inf, img_metas):
+    def feature_fusion_add(self,pts_feats, pts_feats_inf, img_metas):
         batch_size = pts_feats['batch_size']
         # pts_feats['encoded_spconv_tensor'] = pts_feats['encoded_spconv_tensor']\
         # + pts_feats_inf['encoded_spconv_tensor']
@@ -288,7 +295,31 @@ class VoxelNeXtCoopertive(Base3DDetector):
         # pts_feats['encoded_spconv_tensor'] = fused_sparse_feat
         
         return pts_feats
-
+    def feature_fusion(self,pts_feats, pts_feats_inf, img_metas):
+        batch_size = pts_feats['batch_size']
+        # pts_feats['encoded_spconv_tensor'] = pts_feats['encoded_spconv_tensor']\
+        # + pts_feats_inf['encoded_spconv_tensor']
+        "cat zero and add"
+        pts_feats['encoded_spconv_tensor']= replace_feature(pts_feats['encoded_spconv_tensor'],\
+                        torch.cat([pts_feats['encoded_spconv_tensor'].features,\
+                                   torch.zeros_like(pts_feats['encoded_spconv_tensor'].features)],dim=1))
+        
+        pts_feats_inf['encoded_spconv_tensor']= replace_feature(pts_feats_inf['encoded_spconv_tensor'],\
+                        torch.cat([torch.zeros_like(pts_feats_inf['encoded_spconv_tensor'].features),\
+                                  pts_feats_inf['encoded_spconv_tensor'].features ],dim=1))                                                         
+        pts_feats['encoded_spconv_tensor']=spF.sparse_add(pts_feats['encoded_spconv_tensor'],pts_feats_inf['encoded_spconv_tensor'])
+        pts_feats['encoded_spconv_tensor']= self.fuse_net(pts_feats['encoded_spconv_tensor'])
+        # spF.sparse_add_hash_based(pts_feats['encoded_spconv_tensor'],pts_feats_inf['encoded_spconv_tensor'])
+        # grid_size = torch.tensor(pts_feats_inf['encoded_spconv_tensor']\
+        #                          .spatial_shape[::-1])
+        # fused_feat = torch.cat([pts_feats['encoded_spconv_tensor'].features,\
+        #         pts_feats_inf['encoded_spconv_tensor'].features],dim=0)
+        # fused_coords = torch.cat([pts_feats['encoded_spconv_tensor'].indices,\
+        #         pts_feats_inf['encoded_spconv_tensor'].indices],dim=0)
+        # fused_sparse_feat = spconv.SparseConvTensor(fused_feat,fused_coords,[grid_size[1],grid_size[0]],batch_size)
+        # pts_feats['encoded_spconv_tensor'] = fused_sparse_feat
+        
+        return pts_feats
 
     def feature_fusion_warp(self,pts_feats, pts_feats_inf, img_metas):
         voxel_coords_inf = copy.deepcopy(pts_feats_inf['encoded_spconv_tensor'].indices)#copy.deepcopy(pts_feats_inf['voxel_coords'])

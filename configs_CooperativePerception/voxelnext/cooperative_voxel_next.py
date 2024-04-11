@@ -330,6 +330,6 @@ log_config = dict(
            dict(type='TensorboardLoggerHook')])
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-load_from = './work_dirs/voxel_next_dairv2x/epoch_20.pth'
+load_from = None #'./work_dirs/voxel_next_dairv2x/epoch_20.pth'
 resume_from = None
 workflow = [('train', 1)]
