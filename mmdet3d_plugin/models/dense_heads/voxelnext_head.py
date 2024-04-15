@@ -106,11 +106,11 @@ class VoxelNeXtHead(nn.Module):
             cur_head_dict['hm'] = dict(out_channels=len(cur_class_names), num_conv=self.model_cfg.num_hm_conv)
             self.heads_list.append(
                 SeparateHead(
-                    input_channels=self.model_cfg.get('SHARED_CONV_CHANNEL', 128),
+                    input_channels=self.model_cfg.get('shared_conv_channel', 128),
                     sep_head_dict=cur_head_dict,
                     kernel_size=kernel_size_head,
-                    init_bias=-2.19,
-                    use_bias=self.model_cfg.get('USE_BIAS_BEFORE_NORM', False),
+                    init_bias=-2.66,
+                    use_bias=self.model_cfg.get('use_bias_before_norm', False),
                 )
             )
         self.predict_boxes_when_training = predict_boxes_when_training

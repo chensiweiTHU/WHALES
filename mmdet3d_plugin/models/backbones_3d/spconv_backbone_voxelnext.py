@@ -182,29 +182,29 @@ class VoxelResBackBone8xVoxelNeXt(nn.Module):
         voxel_features, voxel_coords = batch_dict['voxel_features'], batch_dict['voxel_coords']
         batch_size = batch_dict['batch_size']
         input_sp_tensor = spconv.SparseConvTensor(
-            features=voxel_features,
-            indices=voxel_coords.int(),
-            spatial_shape=self.sparse_shape,
+            features=voxel_features, # 23k x4
+            indices=voxel_coords.int(), # 23kx4
+            spatial_shape=self.sparse_shape, # 9x2304x2304
             batch_size=batch_size
         )
-        x = self.conv_input(input_sp_tensor)
+        x = self.conv_input(input_sp_tensor) # 23k x 16, [9, 2304, 2304] 0.04% occupied
 
-        x_conv1 = self.conv1(x)
-        x_conv2 = self.conv2(x_conv1)
-        x_conv3 = self.conv3(x_conv2)
-        x_conv4 = self.conv4(x_conv3)
-        x_conv5 = self.conv5(x_conv4)
-        x_conv6 = self.conv6(x_conv5)
+        x_conv1 = self.conv1(x) # 23k x 16, [9, 2304, 2304] 0.04% occupied 
+        x_conv2 = self.conv2(x_conv1) # 51k x 32, [5,1152,1152] 0.7% occupied
+        x_conv3 = self.conv3(x_conv2) # 51k x 64, [3, 576, 576] 5% occupied
+        x_conv4 = self.conv4(x_conv3) # 31k x 128, [2,288,288], 19% occupied
+        x_conv5 = self.conv5(x_conv4) # 8k x 128, [1 ,144, 144], 48% occupied
+        x_conv6 = self.conv6(x_conv5) # 3276 x 128, [1,72,72], 63% occupied
 
-        x_conv5.indices[:, 1:] *= 2
+        x_conv5.indices[:, 1:] *= 2 # sparse FPN
         x_conv6.indices[:, 1:] *= 4
         x_conv4 = x_conv4.replace_feature(torch.cat([x_conv4.features, x_conv5.features, x_conv6.features]))
         x_conv4.indices = torch.cat([x_conv4.indices, x_conv5.indices, x_conv6.indices])
+        # x_conv4: 43k x 128, [2, 288, 288], 25% occupied
+        out = self.bev_out(x_conv4) # 21k x 128, [288, 288], 25% occupied
 
-        out = self.bev_out(x_conv4)
-
-        out = self.conv_out(out)
-        out = self.shared_conv(out)
+        out = self.conv_out(out) # 44k x 128, [288, 288], 53% occupied
+        out = self.shared_conv(out) # 44k x 128, [288, 288], 53% occupied
 
         batch_dict.update({
             'encoded_spconv_tensor': out,

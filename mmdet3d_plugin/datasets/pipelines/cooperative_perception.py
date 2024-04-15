@@ -9,6 +9,24 @@ import copy
 from mmdet3d.datasets.pipelines import DefaultFormatBundle3D,PointsRangeFilter,GlobalRotScaleTrans,RandomFlip3D
 # from mmdet3d.datasets.pipelines import 
 from mmcv.parallel import DataContainer as DC
+
+@PIPELINES.register_module()
+class PointQuantization(object):
+    def __init__(self, voxel_size, quantize_coords_range):
+        self.voxel_size = np.array(voxel_size)
+        self.quantize_coords_range = quantize_coords_range
+        self.low_bound = np.array(quantize_coords_range[:3])
+    # 2340x2304x16 = 8.5e7 log2(8.5e7) = 26.4 4+1=5B for each point
+    def __call__(self, results):
+        points = results['infrastructure_points']
+        points_np = points.tensor.numpy()
+        points_np[:, :3] -= (self.low_bound + self.voxel_size / 2)
+        points_np[:, :3] = np.around(points_np[:, :3] / self.voxel_size)
+        points_np[:, :3] *= self.voxel_size
+        points_np[:, :3] += (self.low_bound + self.voxel_size / 2)
+        points.tensor = torch.from_numpy(points_np)
+        return results
+
 @PIPELINES.register_module()
 class DefaultFormatBundle3DCP(DefaultFormatBundle3D):
     def __call__(self, results):

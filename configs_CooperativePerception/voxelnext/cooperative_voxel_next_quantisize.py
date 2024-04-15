@@ -165,6 +165,11 @@ data = dict(
                     type='PointsRangeFilter',
                     point_cloud_range=point_cloud_range),
                 dict(
+                    type='PointQuantization',
+                    voxel_size = voxel_size,
+                    quantize_coords_range = point_cloud_range,
+                    ),
+                dict(
                     type='ObjectRangeFilter',
                     point_cloud_range=point_cloud_range),
                 # dict(type='PointShuffle'),
@@ -219,9 +224,14 @@ data = dict(
                     #     scale_ratio_range=[1.0, 1.0],
                     #     translation_std=[0, 0, 0]),
                     # dict(type='RandomFlip3D'),
-                    # dict(
-                    #     type='PointsRangeFilter',
-                    #     point_cloud_range=point_cloud_range),
+                    dict(
+                        type='PointsRangeFilter',
+                        point_cloud_range=point_cloud_range),
+                    dict(
+                    type='PointQuantization',
+                    voxel_size = voxel_size,
+                    quantize_coords_range = point_cloud_range,
+                    ),
                     dict(
                         type='DefaultFormatBundle3D',
                         class_names=class_names,
@@ -272,9 +282,14 @@ data = dict(
                     #     scale_ratio_range=[1.0, 1.0],
                     #     translation_std=[0, 0, 0]),
                     # dict(type='RandomFlip3D'),
-                    # dict(
-                    #     type='PointsRangeFilter',
-                    #     point_cloud_range=point_cloud_range),
+                    dict(
+                        type='PointsRangeFilter',
+                        point_cloud_range=point_cloud_range),
+                    dict(
+                    type='PointQuantization',
+                    voxel_size = voxel_size,
+                    quantize_coords_range = point_cloud_range,
+                    ),
                     dict(
                         type='DefaultFormatBundle3D',
                         class_names=class_names,

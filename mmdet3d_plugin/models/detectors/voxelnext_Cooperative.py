@@ -37,8 +37,11 @@ class VoxelNeXtCoopertive(Base3DDetector):
         if not self.single and not self.raw and self.backbone_3d:
             self.inf_backbone_3d = builder.build_backbone(backbone_3d)
         self.fuse_net = spconv.SparseSequential(
-            spconv.SubMConv2d(256, 128, 3, stride=1, padding=1, bias=True),
-            nn.BatchNorm1d(128),
+            spconv.SubMConv2d(512, 384, 5, stride=1, padding=2, bias=False),
+            nn.BatchNorm1d(384),
+            nn.ReLU(True),
+            spconv.SubMConv2d(384, 256, 3, stride=1, padding=1, bias=False),
+            nn.BatchNorm1d(256),
             nn.ReLU(True),
         )
 
@@ -75,6 +78,11 @@ class VoxelNeXtCoopertive(Base3DDetector):
     def extract_pts_feat(self, pts, img_feats, img_metas):
         """Extract features of points."""
         voxels, num_points, coors = self.voxelize(pts)
+        # about 23k voxels
+        # voxels: N x 10 x4
+        # num_points: N
+        # distribution of num_points:[21519,1348,198,32,8,1,1,1,0,13]
+        # coors: Nx4, last dim is batch
         batch_dict = dict()
         batch_dict['batch_size'] = len(pts)
         batch_dict['voxels'] = voxels
@@ -83,7 +91,7 @@ class VoxelNeXtCoopertive(Base3DDetector):
         voxel_features = self.pts_voxel_encoder(batch_dict)
         # batch_size = coors[-1, 0] + 1
         # x = self.pts_middle_encoder(voxel_features, coors, batch_size)
-        return voxel_features
+        return voxel_features # 23k x 4 features+ 23k x4 coords
     def extract_img_feat(self, img, img_metas):
         return None
     def extract_feat(self, points, img, img_metas):
@@ -182,8 +190,12 @@ class VoxelNeXtCoopertive(Base3DDetector):
         "first filter out -1 labels in DAIR-V2X dataset by FFNet"
         # for i,l in enumerate(gt_labels_3d):
         #     gt_labels_3d[i] = l[l != -1]
-        for i,l in enumerate(gt_labels_3d):
-            gt_labels_3d[i][l == -1] = self.dense_head.num_class-1
+        if self.dense_head.num_class>1:
+            for i,l in enumerate(gt_labels_3d):
+                gt_labels_3d[i][l == -1] = self.dense_head.num_class-1
+        else:
+            gt_bboxes_3d = [bboxes_3d_tensor[i][l != -1] for i,l in enumerate(gt_labels_3d)]
+            gt_labels_3d = [l[l != -1] for l in gt_labels_3d]
         gt_labels_3d_tensor = torch.stack([
             torch.cat([l.float()+1, torch.zeros(max_box_num - len(l)).to(l.device)])
             for l in gt_labels_3d
@@ -236,7 +248,7 @@ class VoxelNeXtCoopertive(Base3DDetector):
                 infrastructure_points[i] = torch.cat([points_inf,points_inf_feat],dim=1)
                 if self.raw:
                     points[i] = torch.cat([points[i],infrastructure_points[i]],dim=0)
-        
+                # infrastructure points: about 45k x 4, last dim is intensity
         img_feats, voxel_feats = self.extract_feat(
             points, img=img, img_metas=img_metas)
         pts_feats = self.backbone_3d(voxel_feats)
