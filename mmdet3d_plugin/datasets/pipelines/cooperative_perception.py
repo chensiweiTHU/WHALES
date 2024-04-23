@@ -6,7 +6,8 @@ from pyquaternion import Quaternion
 import torch
 import pdb
 import copy
-from mmdet3d.datasets.pipelines import DefaultFormatBundle3D,PointsRangeFilter,GlobalRotScaleTrans,RandomFlip3D
+from mmdet3d.datasets.pipelines import DefaultFormatBundle3D,PointsRangeFilter,\
+    GlobalRotScaleTrans,RandomFlip3D,PointShuffle
 # from mmdet3d.datasets.pipelines import 
 from mmcv.parallel import DataContainer as DC
 
@@ -50,6 +51,11 @@ class PointsRangeFilterCP(PointsRangeFilter):
                     points_mask = points.in_range_3d(self.pcd_range)
                     clean_points = points[points_mask]
                     results['cooperative_agents'][key]['points'] = clean_points
+        if 'infrastructure_points' in results.keys():
+            points = results['infrastructure_points']
+            points_mask = points.in_range_3d(self.pcd_range)
+            clean_points = points[points_mask]
+            results['infrastructure_points'] = clean_points
         return results
 
 @PIPELINES.register_module(force=True)
@@ -195,6 +201,28 @@ class ProjectCooperativePCD2ego(object):
             points, points_dim=points.shape[-1], attribute_dims=attribute_dims)
             # results['points'] = points
             # results['transmitted_data_size'] = transmitted_data_size
+        if 'infrastructure_points' in results.keys(): # DAIR-V2X
+            "project inf points to vehicle coordinate system in raw data"
+            infrastructure_points = results['infrastructure_points']
+            points_class = type(infrastructure_points)
+            infrastructure_points = infrastructure_points.tensor
+            device = infrastructure_points.device
+
+            rotatation_matrix = torch.tensor(results['inf2veh']['rotation']).to(device).float()
+            translation = torch.tensor(results['inf2veh']['translation']).to(device).float()
+            transfrom_matrix = torch.zeros((4,4)).to(device)
+            transfrom_matrix[0:3,0:3] = rotatation_matrix
+            transfrom_matrix[0:3,3] = translation.T
+            transfrom_matrix[3,3] = 1
+            points_inf_feat = infrastructure_points[:,3:]
+            points_inf = infrastructure_points[:,:3]
+            points_inf = torch.cat([points_inf,torch.ones(points_inf.shape[0],1).to(device)],dim=1)
+            points_inf = transfrom_matrix@points_inf.T
+            points_inf = points_inf.T
+            points_inf = points_inf[:,0:3]
+            infrastructure_points = torch.cat([points_inf,points_inf_feat],dim=1)
+            results['infrastructure_points'] = points_class(
+            infrastructure_points, points_dim=infrastructure_points.shape[-1], attribute_dims=None)
         return results
 
 @PIPELINES.register_module(force=True)
@@ -642,6 +670,8 @@ class GlobalRotScaleTransCP(GlobalRotScaleTrans):
                 if 'points' in input_dict['cooperative_agents'][key].keys():
                     assert isinstance(input_dict['cooperative_agents'][key]['points'], BasePoints)
                     input_dict['cooperative_agents'][key]['points'].translate(trans_factor)
+        if 'infrastructure_points' in input_dict.keys():
+            input_dict['infrastructure_points'].translate(trans_factor)
     
     def _rot_bbox_points(self, input_dict):
         """Private function to rotate bounding boxes and points.
@@ -668,6 +698,8 @@ class GlobalRotScaleTransCP(GlobalRotScaleTrans):
                     if 'points' in input_dict['cooperative_agents'][key].keys():
                         assert isinstance(input_dict['cooperative_agents'][key]['points'], BasePoints)
                         rot_mat_T = input_dict['cooperative_agents'][key]['points'].rotate(noise_rotation)
+            if 'infrastructure_points' in input_dict.keys():
+                rot_mat_T = input_dict['infrastructure_points'].rotate(noise_rotation)
             #####
             return
 
@@ -686,6 +718,8 @@ class GlobalRotScaleTransCP(GlobalRotScaleTrans):
                             assert isinstance(input_dict['cooperative_agents'][key]['points'], BasePoints)
                             rot_mat_T = input_dict['cooperative_agents'][key]['points'].rotate(-noise_rotation)
                             # note: rotate points is reverse to rotate box and point function
+                if 'infrastructure_points' in input_dict.keys():
+                    rot_mat_T = input_dict['infrastructure_points'].rotate(noise_rotation)
                 #####
 
     def _scale_bbox_points(self, input_dict):
@@ -720,6 +754,13 @@ class GlobalRotScaleTransCP(GlobalRotScaleTrans):
                             'setting shift_height=True but points have no height attribute'
                         cp_points.tensor[:, cp_points.attribute_dims['height']] *= scale
                     input_dict['cooperative_agents'][key]['points'] = cp_points
+        if 'infrastructure_points' in input_dict.keys():
+            input_dict['infrastructure_points'].scale(scale)
+            if self.shift_height:
+                assert 'height' in input_dict['infrastructure_points'].attribute_dims.keys(), \
+                    'setting shift_height=True but points have no height attribute'
+                input_dict['infrastructure_points'].tensor[:, input_dict['infrastructure_points']\
+                                                           .attribute_dims['height']] *= scale
         for key in input_dict['bbox3d_fields']:
             input_dict[key].scale(scale)
 
@@ -755,6 +796,8 @@ class RandomFlip3DCP(RandomFlip3D):
                         if 'points' in input_dict['cooperative_agents'][key].keys():
                             assert isinstance(input_dict['cooperative_agents'][key]['points'], BasePoints)
                             input_dict['cooperative_agents'][key]['points'].flip(direction)
+                if 'infrastructure_points' in input_dict.keys():
+                    input_dict['infrastructure_points'].flip(direction)
             else:
                 input_dict[key].flip(direction)
         if 'centers2d' in input_dict:
@@ -769,3 +812,24 @@ class RandomFlip3DCP(RandomFlip3D):
             # see more details and examples at
             # https://github.com/open-mmlab/mmdetection3d/pull/744
             input_dict['cam2img'][0][2] = w - input_dict['cam2img'][0][2]
+
+@PIPELINES.register_module()
+class PointShuffleCP(PointShuffle):
+    def __call__(self, input_dict):
+        input_dict = super().__call__(input_dict)
+        if "infrastructure_points" in input_dict.keys():
+            idx_inf = input_dict['infrastructure_points'].shuffle()
+        return input_dict
+    
+@PIPELINES.register_module()
+class GlobalTransCP(object):
+    def __init__(self, trans_factor):
+        self.trans_factor = np.array(trans_factor)
+    def __call__(self, input_dict):
+        input_dict['points'].translate(self.trans_factor)
+        if "infrastructure_points" in input_dict.keys():
+            input_dict['infrastructure_points'].translate(self.trans_factor)
+        # input_dict['pcd_trans'] = self.trans_factor
+        for key in input_dict['bbox3d_fields']:
+            input_dict[key].translate(self.trans_factor)
+        return input_dict

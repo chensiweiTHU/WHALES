@@ -17,7 +17,8 @@ from mmdet3d.datasets.pipelines.transforms_3d import (BackgroundPointsFilter, Gl
                             RandomJitterPoints, VoxelBasedPointSampler)
 from .cooperative_perception import (LoadPointsFromCooperativeAgents, RawlevelPointCloudFusion,
                                      AgentScheduling, DefaultFormatBundle3DCP,ProjectCooperativePCD2ego,
-                                     GlobalRotScaleTransCP,RandomFlip3DCP,PointQuantization
+                                     GlobalRotScaleTransCP,RandomFlip3DCP,PointQuantization,\
+                                        PointShuffleCP,GlobalTransCP
                                      )
 from .opencood_pipelines import transferOpencoodData
 __all__ = [
@@ -32,5 +33,6 @@ __all__ = [
     'LoadImageFromFileMono3D', 'ObjectNameFilter', 'RandomDropPointsColor',
     'RandomJitterPoints', 'LoadPointsFromCooperativeAgents', 'RawlevelPointCloudFusion',
     'AgentScheduling','DefaultFormatBundle3DCP','ProjectCooperativePCD2ego',
-    'GlobalRotScaleTransCP','RandomFlip3DCP','transferOpencoodData','PointQuantization'
+    'GlobalRotScaleTransCP','RandomFlip3DCP','transferOpencoodData','PointQuantization',
+    'PointShuffleCP','GlobalTransCP'
 ]

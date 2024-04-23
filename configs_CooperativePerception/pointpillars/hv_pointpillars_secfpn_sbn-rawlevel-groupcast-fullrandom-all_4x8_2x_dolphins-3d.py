@@ -84,8 +84,8 @@ test_pipeline = [
         use_dim=4,
         file_client_args=file_client_args),
     dict(type='AgentScheduling',
-        mode="groupcast",
-        submode="full_random", 
+        mode="unicast",
+        submode="mass", 
         basic_data_limit=6e6
         ),
     dict(

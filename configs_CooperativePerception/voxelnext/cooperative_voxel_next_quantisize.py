@@ -105,6 +105,7 @@ model = dict(
         recall_thresh_list=[0.3, 0.5, 0.7],
         eval_metric='kitti'
     ),
+    proj_first=True,
     single=False
 )
 file_client_args = dict(backend='disk')
@@ -224,9 +225,9 @@ data = dict(
                     #     scale_ratio_range=[1.0, 1.0],
                     #     translation_std=[0, 0, 0]),
                     # dict(type='RandomFlip3D'),
-                    dict(
-                        type='PointsRangeFilter',
-                        point_cloud_range=point_cloud_range),
+                    # dict(
+                    #     type='PointsRangeFilter',
+                    #     point_cloud_range=point_cloud_range),
                     dict(
                     type='PointQuantization',
                     voxel_size = voxel_size,
@@ -282,9 +283,9 @@ data = dict(
                     #     scale_ratio_range=[1.0, 1.0],
                     #     translation_std=[0, 0, 0]),
                     # dict(type='RandomFlip3D'),
-                    dict(
-                        type='PointsRangeFilter',
-                        point_cloud_range=point_cloud_range),
+                    # dict(
+                    #     type='PointsRangeFilter',
+                    #     point_cloud_range=point_cloud_range),
                     dict(
                     type='PointQuantization',
                     voxel_size = voxel_size,

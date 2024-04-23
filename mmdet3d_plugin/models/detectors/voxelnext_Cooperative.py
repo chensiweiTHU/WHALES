@@ -7,6 +7,7 @@ from mmdet3d.models import builder
 from mmdet3d.ops import Voxelization
 from mmcv.runner import force_fp32
 from torch.nn import functional as F
+from torch.autograd import Variable
 from pcdet.ops.iou3d_nms import iou3d_nms_utils
 import copy
 import spconv.pytorch.functional as spF
@@ -20,7 +21,7 @@ class VoxelNeXtCoopertive(Base3DDetector):
     """this is the cooperaivte version of VoxelNeXt, 
     which is used to fuse the results of multiple agents in DAIR-V2X dataset."""
     def __init__(self, pts_voxel_layer,pts_voxel_encoder,
-                  backbone_3d, dense_head, post_processing,single=False,proj_first=True,raw=False, **kwargs ):
+                  backbone_3d, dense_head, post_processing,single=False,proj_first=False,raw=False, **kwargs ):
                   #num_class, dataset):
         super(VoxelNeXtCoopertive,self).__init__()
         # self.module_list = self.build_networks()
@@ -68,6 +69,7 @@ class VoxelNeXtCoopertive(Base3DDetector):
             coors.append(res_coors)
             num_points.append(res_num_points)
         voxels = torch.cat(voxels, dim=0)
+
         num_points = torch.cat(num_points, dim=0)
         coors_batch = []
         for i, coor in enumerate(coors):
@@ -133,9 +135,9 @@ class VoxelNeXtCoopertive(Base3DDetector):
         Returns:
             dict: Losses of different branches.
         """
+        device = points[0].device
         if not self.single and self.proj_first:
             "project inf points to vehicle coordinate system in raw data"
-            device = points[0].device
             for i in range(len(infrastructure_points)):
                 pcd_range = torch.tensor(self.pts_voxel_layer.point_cloud_range).to(device)
                 rotatation_matrix = torch.tensor(img_metas[i]['inf2veh']['rotation']).to(device).float()
@@ -164,7 +166,10 @@ class VoxelNeXtCoopertive(Base3DDetector):
                 infrastructure_points[i] = torch.cat([points_inf,points_inf_feat],dim=1)
                 if self.raw:
                     points[i] = torch.cat([points[i],infrastructure_points[i]],dim=0)
-
+        for i,points_inf in enumerate(infrastructure_points):
+            if len(points_inf) == 0:
+                points_inf = torch.zeros((1,4)).to(device)
+                infrastructure_points[i] = points_inf
         img_feats, voxel_feats = self.extract_feat(
             points, img=img, img_metas=img_metas)
         pts_feats = self.backbone_3d(voxel_feats)
@@ -172,10 +177,11 @@ class VoxelNeXtCoopertive(Base3DDetector):
             img_feats_inf, voxel_feats_inf = self.extract_feat(
             infrastructure_points, img=infrastructure_img, img_metas=img_metas)
             pts_feats_inf = self.inf_backbone_3d(voxel_feats_inf)
-            if self.proj_first:
-                pts_feats = self.feature_fusion(pts_feats, pts_feats_inf, img_metas)
-            else:
-                pts_feats = self.feature_fusion_warp(pts_feats, pts_feats_inf, img_metas)
+            pts_feats = self.feature_fusion(pts_feats, pts_feats_inf, img_metas)
+            # if self.proj_first:
+            #     pts_feats = self.feature_fusion(pts_feats, pts_feats_inf, img_metas)
+            # else:
+            #     pts_feats = self.feature_fusion_warp(pts_feats, pts_feats_inf, img_metas)
         batch_dict = pts_feats
         "fuse gt_bboxes_3d to BXMX9"
         max_box_num = max([len(bboxes) for bboxes in gt_bboxes_3d])
@@ -214,7 +220,8 @@ class VoxelNeXtCoopertive(Base3DDetector):
         pass
 
     def simple_test(self,points=None,img_metas=None,img=None,infrastructure_points=None,infrastructure_img=None,**kwargs):
-        if not self.single and self.proj_first:
+        "we cannot project points in test pipelines, so we need to project them here"
+        if not self.single: 
             "project inf points to vehicle coordinate system in raw data"
             device = points[0].device
             for i in range(len(infrastructure_points)):
@@ -249,6 +256,10 @@ class VoxelNeXtCoopertive(Base3DDetector):
                 if self.raw:
                     points[i] = torch.cat([points[i],infrastructure_points[i]],dim=0)
                 # infrastructure points: about 45k x 4, last dim is intensity
+        for i,points_inf in enumerate(infrastructure_points):
+            if len(points_inf) == 0:
+                points_inf = torch.zeros((1,4)).to(device)
+                infrastructure_points[i] = points_inf
         img_feats, voxel_feats = self.extract_feat(
             points, img=img, img_metas=img_metas)
         pts_feats = self.backbone_3d(voxel_feats)
@@ -259,14 +270,22 @@ class VoxelNeXtCoopertive(Base3DDetector):
                     infrastructure_points = infrastructure_points[0]
                 else:
                     pts_feats_inf = None
+            # infrastructure_points = [Variable(p,requires_grad=True) for p in infrastructure_points]
             img_feats_inf, voxel_feats_inf = self.extract_feat(
             infrastructure_points, img=infrastructure_img, img_metas=img_metas)
+            "不确定要不要反向传播计算原始特征梯度"
+            #voxel_feats_inf['voxel_features'] = Variable(voxel_feats_inf['voxel_features'],requires_grad=True)
             pts_feats_inf = self.inf_backbone_3d(voxel_feats_inf)
-            if self.proj_first:
-                pts_feats = self.feature_fusion(pts_feats, pts_feats_inf, img_metas)
-            else:
-                pts_feats = self.feature_fusion_warp(pts_feats, pts_feats_inf, img_metas)
-
+            # self.inf_backbone_3d.train()
+            # with torch.no_grad():
+            #     pts_feats_inf = self.inf_backbone_3d(voxel_feats_inf)
+            #pts_feats_inf['encoded_spconv_tensor'].backward(torch.ones_like(pts_feats_inf['encoded_spconv_tensor'].features))
+            
+            # if self.proj_first:
+            #     pts_feats = self.feature_fusion(pts_feats, pts_feats_inf, img_metas)
+            # else:
+            #     pts_feats = self.feature_fusion_warp(pts_feats, pts_feats_inf, img_metas)
+            pts_feats = self.feature_fusion(pts_feats, pts_feats_inf, img_metas)
         # img_feats_inf, pts_feats_inf = self.extract_feat(
         #     infrastructure_points, img=infrastructure_img, img_metas=img_metas)
         # if pts_feats_inf is not None:
