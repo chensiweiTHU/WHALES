@@ -8,7 +8,7 @@ data_info_val_path = './data_process/dair-v2x/flow_data_jsons/flow_data_info_val
 
 class_names = ['Car', 'others']
 point_cloud_range = [0, -46.08, -3, 92.16, 46.08, 1]
-voxel_size = [0.04, 0.04, 0.625]
+voxel_size = [0.04, 0.04, 0.0625]
 l = int((point_cloud_range[3]-point_cloud_range[0])/voxel_size[0])
 h = int((point_cloud_range[4]-point_cloud_range[1])/voxel_size[1])
 output_shape = [h, l]
