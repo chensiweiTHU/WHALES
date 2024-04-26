@@ -17,13 +17,13 @@ import torch.nn as nn
 import numpy as np
 # from mmdet3d.core.bbox import LiDARInstance3DBoxes
 @DETECTORS.register_module(force=True)
-class VoxelNeXtCoopertive(Base3DDetector):
+class VoxelNeXtCoopertiveTemporal(Base3DDetector):
     """this is the cooperaivte version of VoxelNeXt, 
     which is used to fuse the results of multiple agents in DAIR-V2X dataset."""
     def __init__(self, pts_voxel_layer,pts_voxel_encoder,
-                  backbone_3d, fusion_channels, dense_head, post_processing, single=False,proj_first=False,raw=False, **kwargs ):
+                  backbone_3d, fusion_channels, temp_fusion_channels, dense_head, post_processing, single=False,proj_first=False,raw=False, **kwargs ):
                   #num_class, dataset):
-        super(VoxelNeXtCoopertive,self).__init__()
+        super(VoxelNeXtCoopertiveTemporal,self).__init__()
         # self.module_list = self.build_networks()
         self.single = single
         self.proj_first = proj_first
@@ -38,11 +38,26 @@ class VoxelNeXtCoopertive(Base3DDetector):
         if not self.single and not self.raw and self.backbone_3d:
             self.inf_backbone_3d = builder.build_backbone(backbone_3d)
         self.fuse_net = self.build_fusion_net(fusion_channels)
+        self.temp_fusion_net = self.build_temp_fusion_net(temp_fusion_channels)
         if dense_head:
             self.dense_head = builder.build_head(dense_head)
         if post_processing:
             self.post_processing_cfg = post_processing
+        self.pcd_range = torch.tensor(self.pts_voxel_layer.point_cloud_range)
+    
     def build_fusion_net(self,channels=[512,384,256]):
+        fusion_net = spconv.SparseSequential(
+            spconv.SubMConv2d(channels[0], channels[1], 5, stride=1, padding=2, bias=False),
+            nn.BatchNorm1d(channels[1]),
+            nn.ReLU(True),
+            spconv.SubMConv2d(channels[1],channels[2], 3, stride=1, padding=1, bias=False),
+            nn.BatchNorm1d(channels[2]),
+            nn.ReLU(True),
+        )
+        return fusion_net
+
+    def build_temp_fusion_net(self,channels=[256,192,128]):
+        assert channels[0] == channels[-1]*2
         fusion_net = spconv.SparseSequential(
             spconv.SubMConv2d(channels[0], channels[1], 5, stride=1, padding=2, bias=False),
             nn.BatchNorm1d(channels[1]),
@@ -103,6 +118,72 @@ class VoxelNeXtCoopertive(Base3DDetector):
         img_feats = self.extract_img_feat(img, img_metas)
         voxel_feats = self.extract_pts_feat(points, img_feats, img_metas)
         return (img_feats, voxel_feats)
+    
+    def get_history_motion_matrix(self,device,batch_i,img_metas,oldimg_metas):
+        rotatation_matrix = torch.tensor(img_metas[batch_i]['inf2veh']['rotation']).to(device).float()
+        translation = torch.tensor(img_metas[batch_i]['inf2veh']['translation']).to(device).float()
+        transfrom_matrix = torch.zeros((4,4)).to(device)
+        transfrom_matrix[0:3,0:3] = rotatation_matrix
+        transfrom_matrix[0:3,3] = translation.T
+        transfrom_matrix[3,3] = 1
+
+        old_rotation_matrix = torch.tensor(oldimg_metas[batch_i]['inf2veh']['rotation']).to(device).float()
+        old_translation = torch.tensor(oldimg_metas[batch_i]['inf2veh']['translation']).to(device).float()
+        old_transfrom_matrix = torch.zeros((4,4)).to(device)
+        old_transfrom_matrix[0:3,0:3] = old_rotation_matrix
+        old_transfrom_matrix[0:3,3] = old_translation.T
+        old_transfrom_matrix[3,3] = 1
+        "inf do not move, veh move"
+        "oldveh2veh = oldinf2veh^-1 * inf2veh"
+        old2new_transfrom_matrix = torch.inverse(old_transfrom_matrix)@transfrom_matrix
+        return old2new_transfrom_matrix
+    
+    def project_points(self,points,transfrom_matrix,device):
+        pcd_range = self.pcd_range.to(device)
+        points_feat = points[:,3:]
+        points = points[:,:3]
+        points = torch.cat([points,torch.ones(points.shape[0],1).to(device)],dim=1)
+        points = transfrom_matrix@points.T
+        points = points.T
+        points = points[:,0:3]
+        mask = (points[:,0] > pcd_range[0]) &\
+            (points[:,0] < pcd_range[3]) &\
+            (points[:,1] > pcd_range[1]) &\
+            (points[:,1] < pcd_range[4]) &\
+            (points[:,2] > pcd_range[2]) &\
+            (points[:,2] < pcd_range[5])
+        points = points[mask]
+        points_feat = points_feat[mask]
+        if len(points) == 0:
+            points = torch.zeros((1,3)).to(device)
+            points_feat = torch.zeros((1,points_feat.shape[1])).to(device)
+        points = torch.cat([points, points_feat],dim=1)
+        return points
+    
+    def get_history_results(self,history_points,history_inf_points,img_metas,oldimg_metas,older_BEV=None,return_BEV=True):
+        "make sure every old point is in old veh coordinate"
+        self.eval()
+        with torch.no_grad():
+            device = history_points[0].device
+            for i in range(len(history_inf_points)):
+                old2new_matrix_i = self.get_history_motion_matrix(device,i,img_metas,oldimg_metas)
+                history_inf_points[i] = self.project_points(history_inf_points[i],old2new_matrix_i,device)
+                history_points[i] = self.project_points(history_points[i],old2new_matrix_i,device)
+            his_img_feats, his_voxel_feats = self.extract_feat(history_points,None,img_metas)
+            his_pts_feats = self.backbone_3d(his_voxel_feats)
+            his_img_feats_inf, his_voxel_feats_inf  = self.extract_feat(history_inf_points,None,img_metas)
+            pts_feats_inf = self.inf_backbone_3d(his_voxel_feats_inf)
+            "first spatial fusion, then temporal fusion"
+            his_pts_feats = self.feature_fusion(his_pts_feats, pts_feats_inf, img_metas)
+            if older_BEV is not None:
+                his_pts_feats = self.temporal_fusion(his_pts_feats, older_BEV, img_metas)
+            if return_BEV:
+                his_output_dict = his_pts_feats
+            else:
+                his_output_dict = self.dense_head(his_pts_feats)       
+        self.train()
+        return his_output_dict
+
     def forward_train(self,
                       points=None,
                       img_metas=None,
@@ -111,6 +192,7 @@ class VoxelNeXtCoopertive(Base3DDetector):
                       infrastructure_points=None,
                       img=None,
                       infrastructure_img=None,
+                      history_data=None,
                       **kwargs
                       ):
         """Forward training function.
@@ -176,6 +258,24 @@ class VoxelNeXtCoopertive(Base3DDetector):
         img_feats, voxel_feats = self.extract_feat(
             points, img=img, img_metas=img_metas)
         pts_feats = self.backbone_3d(voxel_feats)
+
+        if history_data is not None and len(history_data) > 0:
+            for i in range(len(history_data)-1,-1,-1):
+                if i == len(history_data)-1: # oldest
+                    older_BEV = None
+                else:
+                    older_BEV = his_pts_feats
+                if i == 0:
+                    return_BEV = False
+                else:
+                    return_BEV = True
+                his_pts_feats = self.get_history_results(history_data[i]['points'],\
+                    history_data[i]['infrastructure_points'],img_metas,history_data[i]['img_metas'],\
+                    older_BEV,return_BEV)
+                # his_pts_feats = self.temporal_fusion(pts_feats, his_output_dict, img_metas)
+        else:
+            his_pts_feats = None
+            
         if not self.single and not self.raw:
             img_feats_inf, voxel_feats_inf = self.extract_feat(
             infrastructure_points, img=infrastructure_img, img_metas=img_metas)
@@ -185,6 +285,8 @@ class VoxelNeXtCoopertive(Base3DDetector):
             #     pts_feats = self.feature_fusion(pts_feats, pts_feats_inf, img_metas)
             # else:
             #     pts_feats = self.feature_fusion_warp(pts_feats, pts_feats_inf, img_metas)
+        if his_pts_feats is not None:
+            pts_feats = self.temporal_fusion(pts_feats, his_pts_feats, img_metas)
         batch_dict = pts_feats
         "fuse gt_bboxes_3d to BXMX9"
         max_box_num = max([len(bboxes) for bboxes in gt_bboxes_3d])
@@ -215,7 +317,8 @@ class VoxelNeXtCoopertive(Base3DDetector):
 
 
         output_dict = self.dense_head(batch_dict) # img_feats for future use
-
+        "heat_map: BXH_bevxW_bev"
+        "one BEV, one heatmap"
         losses, loss_dict = self.dense_head.get_loss()
         return loss_dict
     
@@ -363,6 +466,18 @@ class VoxelNeXtCoopertive(Base3DDetector):
         # fused_sparse_feat = spconv.SparseConvTensor(fused_feat,fused_coords,[grid_size[1],grid_size[0]],batch_size)
         # pts_feats['encoded_spconv_tensor'] = fused_sparse_feat
         
+        return pts_feats
+    def temporal_fusion(self,pts_feats, pts_feats_old, img_metas):
+        "cat zero and add"
+        pts_feats['encoded_spconv_tensor']= replace_feature(pts_feats['encoded_spconv_tensor'],\
+                        torch.cat([pts_feats['encoded_spconv_tensor'].features,\
+                                   torch.zeros_like(pts_feats['encoded_spconv_tensor'].features)],dim=1))
+        
+        pts_feats_old['encoded_spconv_tensor']= replace_feature(pts_feats_old['encoded_spconv_tensor'],\
+                        torch.cat([torch.zeros_like(pts_feats_old['encoded_spconv_tensor'].features),\
+                                  pts_feats_old['encoded_spconv_tensor'].features ],dim=1))                                                         
+        pts_feats['encoded_spconv_tensor']=spF.sparse_add(pts_feats['encoded_spconv_tensor'],pts_feats_old['encoded_spconv_tensor'])
+        pts_feats['encoded_spconv_tensor']= self.temp_fusion_net(pts_feats['encoded_spconv_tensor'])
         return pts_feats
 
     def feature_fusion_warp(self,pts_feats, pts_feats_inf, img_metas):

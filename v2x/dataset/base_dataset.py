@@ -3,8 +3,8 @@ import json
 import os
 
 from torch.utils.data import Dataset
-from v2x_utils import get_trans
-from dataset.dataset_utils import load_json
+from v2x.v2x_utils import get_trans
+from v2x.dataset.dataset_utils import load_json
 
 
 def get_annos(path, prefix, single_frame, sensortype="camera"):

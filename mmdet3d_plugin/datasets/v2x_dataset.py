@@ -15,8 +15,10 @@ from mmdet3d.core.bbox import (Box3DMode, CameraInstance3DBoxes, Coord3DMode,
                          LiDARInstance3DBoxes, points_cam2img)
 from mmdet3d.datasets.custom_3d import Custom3DDataset
 from .pipelines import Compose
-
-
+from v2x.dataset.base_dataset import DAIRV2XDataset, get_annos, build_path_to_info, build_frame_to_info
+from v2x.dataset.dataset_utils import load_json
+from v2x.v2x_utils import id_to_str
+from data_process.dairv2x.preprocess import trans_lidar_i2v
 @DATASETS.register_module()
 class V2XDataset(Custom3DDataset):
     r"""DAIR-V2X Dataset.
@@ -64,7 +66,8 @@ class V2XDataset(Custom3DDataset):
                  box_type_3d='LiDAR',
                  filter_empty_gt=True,
                  test_mode=False,
-                 pcd_limit_range=[0, -40, -3, 70.4, 40, 0.0]):
+                 pcd_limit_range=[0, -40, -3, 70.4, 40, 0.0],
+                 history=0):
         super().__init__(
             data_root=data_root,
             ann_file=ann_file,
@@ -79,8 +82,30 @@ class V2XDataset(Custom3DDataset):
         assert self.modality is not None
         self.pcd_limit_range = pcd_limit_range
         self.pts_prefix = pts_prefix
-
+        self.history = history
         self.__load_v2x_annotations()
+        if self.history != 0:
+            if self.modality['use_lidar']==True:
+                sensortype = 'lidar'
+            self.inf_path2info = build_path_to_info(
+                "infrastructure-side",
+                load_json(osp.join(self.data_root, "infrastructure-side/data_info.json")),
+                sensortype,
+            )
+            self.veh_path2info = build_path_to_info(
+                "vehicle-side",
+                load_json(osp.join(self.data_root, "vehicle-side/data_info.json")),
+                sensortype,
+            )
+            self.frame_pairs = load_json(osp.join(self.data_root, "cooperative/data_info.json"))
+            for i in range(len(self.data_infos)):
+                inf_path = self.data_infos[i]['infrastructure_pointcloud_bin_path']
+                # we use bin instead of pcd, so we go back to pcd
+                inf_path = inf_path.replace(".bin", ".pcd")
+                self.inf_path2info[inf_path].update(datainfo_id = i)
+                veh_path = self.data_infos[i]['vehicle_pointcloud_bin_path']
+                veh_path = veh_path.replace(".bin", ".pcd")
+                self.veh_path2info[veh_path].update(datainfo_id = i)
 
     def __my_read_json(self, path_json):
         with open(path_json, 'r') as load_f:
@@ -191,8 +216,107 @@ class V2XDataset(Custom3DDataset):
         pts_filename = osp.join(self.root_split, self.pts_prefix,
                                 f'{idx:06d}.bin')
         return pts_filename
+    def prepare_train_data(self, index):
+        """Training data preparation.
 
-    def get_data_info(self, index):
+        Args:
+            index (int): Index for accessing the target data.
+
+        Returns:
+            dict: Training data dict of the corresponding index.
+        """
+        if self.history != 0:
+            input_dict = self.get_data_info(index, history=self.history)
+        else:
+            input_dict = self.get_data_info(index)
+        if input_dict is None:
+            return None
+        if input_dict["history_data_infos"] is not None:
+            history_data_infos = input_dict["history_data_infos"]
+            # print(1)
+        else:
+            # print(2)
+            history_data_infos = None
+        self.pre_pipeline(input_dict)
+        example = self.pipeline(input_dict)
+        if self.history != 0 and history_data_infos is not None:
+            history_data = []
+            for data_info in history_data_infos:
+                self.pre_pipeline(data_info)
+                history_example = self.pipeline(data_info)
+                history_data.append(history_example)
+            example["history_data"] = history_data
+        else:
+            example["history_data"] = []
+        if self.filter_empty_gt and \
+                (example is None or
+                    ~(example['gt_labels_3d']._data != -1).any()):
+            return None
+        return example
+
+    def prepare_test_data(self, index):
+        """Prepare data for testing.
+
+        Args:
+            index (int): Index for accessing the target data.
+
+        Returns:
+            dict: Testing data dict of the corresponding index.
+        """
+        input_dict = self.get_data_info(index)
+        self.pre_pipeline(input_dict)
+        example = self.pipeline(input_dict)
+        return example
+    def prev_inf_frame(self, index, latency=1, sensortype="lidar"):
+        if sensortype == "lidar":
+            cur = self.inf_path2info["infrastructure-side/velodyne/" + index + ".pcd"]
+            if (
+                int(index) - latency < int(cur["batch_start_id"])
+                or "infrastructure-side/velodyne/" + id_to_str(int(index) - latency) + ".pcd" not in self.inf_path2info
+            ):
+                return None, None
+            prev = self.inf_path2info["infrastructure-side/velodyne/" + id_to_str(int(index) - latency) + ".pcd"]
+            return (
+                InfFrame(self.path + "/infrastructure-side/", prev),
+                (int(cur["pointcloud_timestamp"]) - int(prev["pointcloud_timestamp"])) / 1000.0,
+            )
+        elif sensortype == "camera":
+            cur = self.inf_path2info["infrastructure-side/image/" + index + ".jpg"]
+            if int(index) - latency < int(cur["batch_start_id"]):
+                return None, None
+            prev = self.inf_path2info["infrastructure-side/image/" + id_to_str(int(index) - latency) + ".jpg"]
+            get_annos(self.path, "infrastructure-side", prev, "camera")
+            return (
+                InfFrame(self.path + "/infrastructure-side/", prev),
+                (int(cur["image_timestamp"]) - int(prev["image_timestamp"])) / 1000.0,
+            )
+    def get_history_info(self,inf_info,veh_info):
+        "we only need history raw data and history vehicle calibration, but some frames not in cooperative labels"
+        inf_pts_filename = os.path.join(self.data_root,"infrastructure-side/", inf_info['pointcloud_path'])
+        veh_pts_filename = os.path.join(self.data_root,"vehicle-side/", veh_info['pointcloud_path'])
+        inf_pts_filename = inf_pts_filename.replace(".pcd", ".bin")
+        veh_pts_filename = veh_pts_filename.replace(".pcd", ".bin")
+        inf_img_filename = os.path.join(self.data_root,"infrastructure-side/", inf_info['image_path'])
+        veh_img_filename = os.path.join(self.data_root,"vehicle-side/", veh_info['image_path'])
+        sample_inf_idx = inf_pts_filename.split("/")[-1].split(".")[0]
+        sample_veh_idx = veh_pts_filename.split("/")[-1].split(".")[0]
+
+        veh_lidar2novatel_path = os.path.join(self.data_root,"vehicle-side/",
+                                              veh_info['calib_lidar_to_novatel_path'])
+        veh_novatel2world_path = os.path.join(self.data_root,"vehicle-side/",
+                                              veh_info['calib_novatel_to_world_path'])
+        inf_lidar2world_path = os.path.join(self.data_root,"infrastructure-side/",
+                                            inf_info['calib_virtuallidar_to_world_path'])
+        system_error_offset =""
+        if system_error_offset == "":
+            system_error_offset = None
+        calib_lidar_i2v_r, calib_lidar_i2v_t = trans_lidar_i2v(inf_lidar2world_path, veh_lidar2novatel_path,
+                                          veh_novatel2world_path, system_error_offset)
+        # print('calib_lidar_i2v: ', calib_lidar_i2v_r, calib_lidar_i2v_t)
+        calib_lidar_i2v = {}
+        calib_lidar_i2v['rotation'] = calib_lidar_i2v_r.tolist()
+        calib_lidar_i2v['translation'] = calib_lidar_i2v_t.tolist()
+    def get_data_info(self, index, history=0):
         """Get data info according to the given index.
 
         Args:
@@ -246,7 +370,56 @@ class V2XDataset(Custom3DDataset):
             infrastructure_pointcloud_bin_path_t_2 = None
             infrastructure_t_0_1 = None
             infrastructure_t_1_2 = None
+        if history!=0:
+            inf_path = info['infrastructure_pointcloud_bin_path'].replace(".bin", ".pcd")
+            inf_info = self.inf_path2info[inf_path]
+            veh_path = info['vehicle_pointcloud_bin_path'].replace(".bin", ".pcd")
+            veh_info = self.veh_path2info[veh_path]
+            history_data_infos = []
+            history_idices = []
+            for i in range(1, history+1):
+                "we get history k data info"
+                inf_idx = int(sample_inf_idx)
+                history_inf_idx = inf_idx - i
+                history_sample_inf_idx = id_to_str(history_inf_idx)
+                history_inf_path = inf_path.replace(sample_inf_idx, history_sample_inf_idx)
 
+                veh_idx = int(sample_veh_idx)
+                history_veh_idx = veh_idx - i
+                history_sample_veh_idx = id_to_str(history_veh_idx)
+                history_veh_path = veh_path.replace(sample_veh_idx, history_sample_veh_idx)
+                if history_inf_path in self.inf_path2info.keys():
+                    history_inf_info = self.inf_path2info[history_inf_path]
+                else:
+                    history_inf_info = None
+                if history_veh_path in self.veh_path2info.keys():
+                    history_veh_info = self.veh_path2info[history_veh_path]
+                else:
+                    history_veh_info = None
+                if history_inf_info is not None and history_veh_info is not None and \
+                history_inf_info['batch_id'] == inf_info['batch_id']:
+                        if 'datainfo_id' in history_inf_info.keys() and \
+                            'datainfo_id' in history_veh_info.keys() and\
+                            history_inf_info['datainfo_id'] == history_veh_info['datainfo_id']:
+                            history_idices.append(history_inf_info['datainfo_id'])
+                            # print('1') about 80%
+                        else:
+                            "history info is not in CP frame"
+                            "Todo: CP label do not cover all frames, we need to consider this situation"
+                            pass
+                            # print('2') about 20%
+                else:
+                    break
+            if len(history_idices) != 0:
+                for index in history_idices:
+                    "late index comes first"
+                    history_data_infos.append(self.get_data_info(index,history=0))
+            else:
+                history_data_infos = None
+        else:
+            history_data_infos = None
+        "according to the calibration, infrastructure calib never moves in on segment"
+        "we use inf2veh(t-1)^-1 * inf2veh(t) to get the relative transformation veh(t-1) to veh(t)"
         input_dict = dict(
             sample_veh_idx=sample_veh_idx,
             sample_inf_idx=sample_inf_idx,
@@ -260,9 +433,9 @@ class V2XDataset(Custom3DDataset):
             infrastructure_pointcloud_bin_path_t_1=infrastructure_pointcloud_bin_path_t_1,
             infrastructure_pointcloud_bin_path_t_2=infrastructure_pointcloud_bin_path_t_2,
             infrastructure_t_0_1=infrastructure_t_0_1,
-            infrastructure_t_1_2=infrastructure_t_1_2
+            infrastructure_t_1_2=infrastructure_t_1_2,
+            history_data_infos=history_data_infos,
         )
-
         if not self.test_mode:
             annos = self.get_ann_info(index)
             input_dict['ann_info'] = annos

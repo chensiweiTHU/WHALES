@@ -4,9 +4,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-from base_dataset import DAIRV2XDataset, get_annos, build_path_to_info, build_frame_to_info
-from dataset.dataset_utils import load_json, InfFrame, VehFrame, VICFrame, InfFrameSPD, VehFrameSPD, VICFrameSPD, Label
-from v2x_utils import Filter, RectFilter, id_cmp, id_to_str, get_trans, box_translation
+from v2x.dataset.base_dataset import DAIRV2XDataset, get_annos, build_path_to_info, build_frame_to_info
+from v2x.dataset.dataset_utils import load_json, InfFrame, VehFrame, VICFrame, InfFrameSPD, VehFrameSPD, VICFrameSPD, Label
+from v2x.v2x_utils import Filter, RectFilter, id_cmp, id_to_str, get_trans, box_translation
 
 
 class DAIRV2XI(DAIRV2XDataset):
@@ -218,14 +218,85 @@ class VICSyncDataset(VICDataset):
     def __init__(self, path, args, split="train", sensortype="lidar", extended_range=None, val_data_path=""):
         super().__init__(path, args, split, sensortype, extended_range, val_data_path)
         logger.info("VIC-Sync {} dataset, overall {} frames".format(split, len(self.data)))
-
+    
+    # self.data[index][0].inf_frame['batch_id']
     def __getitem__(self, index):
         return self.data[index]
 
     def __len__(self):
         return len(self.data)
 
+class VICTemporalDataset_(VICSyncDataset):
+    def __getitem__(self, index):
 
+        return self.data[index]
+class VICTemporalDataset(VICDataset):
+    def __init__(self, path, args, split="train", sensortype="lidar", extended_range=None, val_data_path=""):
+        super().__init__(path, args, split, sensortype, extended_range)
+        self.k = args.k
+        self.history_data = []
+        for vic_frame, coop_labels, filt in self.data:
+            inf_frame, delta_t1 = self.prev_inf_frame(
+                vic_frame.inf_frame.id[sensortype],
+                sensortype,
+            )
+            veh_frame, delta_t2 = self.prev_inf_frame(
+                vic_frame.veh_frame.id[sensortype],
+                sensortype,
+            )
+            if inf_frame is None or veh_frame is None:
+                self.history_data.append((None, None, None))
+            else:
+                history_vic_frame = VICFrame(path, {}, veh_frame, inf_frame, 0, vic_frame.offset)
+                self.async_data.append((history_vic_frame, coop_labels, filt))
+
+        logger.info("VIC-Async {} dataset, overall {} frames".format(split, len(self.async_data)))
+    def prev_inf_frame(self, index, latency=1, sensortype="lidar"):
+        if sensortype == "lidar":
+            cur = self.inf_path2info["infrastructure-side/velodyne/" + index + ".pcd"]
+            if (
+                int(index) - latency < int(cur["batch_start_id"])
+                or "infrastructure-side/velodyne/" + id_to_str(int(index) - latency) + ".pcd" not in self.inf_path2info
+            ):
+                return None, None
+            prev = self.inf_path2info["infrastructure-side/velodyne/" + id_to_str(int(index) - latency) + ".pcd"]
+            return (
+                InfFrame(self.path + "/infrastructure-side/", prev),
+                (int(cur["pointcloud_timestamp"]) - int(prev["pointcloud_timestamp"])) / 1000.0,
+            )
+        elif sensortype == "camera":
+            cur = self.inf_path2info["infrastructure-side/image/" + index + ".jpg"]
+            if int(index) - latency < int(cur["batch_start_id"]):
+                return None, None
+            prev = self.inf_path2info["infrastructure-side/image/" + id_to_str(int(index) - latency) + ".jpg"]
+            get_annos(self.path, "infrastructure-side", prev, "camera")
+            return (
+                InfFrame(self.path + "/infrastructure-side/", prev),
+                (int(cur["image_timestamp"]) - int(prev["image_timestamp"])) / 1000.0,
+            )
+    def prev_veh_frame(self, index,latency=1, sensortype="lidar"):
+        if sensortype == "lidar":
+            cur = self.inf_path2info["vehicle-side/velodyne/" + index + ".pcd"]
+            if (
+                int(index) - latency < int(cur["batch_start_id"])
+                or "vehicle-side/velodyne/" + id_to_str(int(index) - latency) + ".pcd" not in self.inf_path2info
+            ):
+                return None, None
+            prev = self.inf_path2info["vehicle-side/velodyne/" + id_to_str(int(index) - latency) + ".pcd"]
+            return (
+                VehFrame(self.path + "/vehicle-side/", prev),
+                (int(cur["pointcloud_timestamp"]) - int(prev["pointcloud_timestamp"])) / 1000.0,
+            )
+        elif sensortype == "camera":
+            cur = self.inf_path2info["vehicle-side/image/" + index + ".jpg"]
+            if int(index) - latency < int(cur["batch_start_id"]):
+                return None, None
+            prev = self.inf_path2info["vehicle-side/image/" + id_to_str(int(index) - latency) + ".jpg"]
+            get_annos(self.path, "vehicle-side", prev, "camera")
+            return (
+                VehFrame(self.path + "/vehicle-side/", prev),
+                (int(cur["image_timestamp"]) - int(prev["image_timestamp"])) / 1000.0,
+            )
 class VICAsyncDataset(VICDataset):
     def __init__(self, path, args, split="train", sensortype="lidar", extended_range=None, val_data_path=""):
         super().__init__(path, args, split, sensortype, extended_range)

@@ -1,5 +1,5 @@
 from .geometry_utils import point_in_box
-from config import superclass
+from v2x.config import superclass
 import numpy as np
 
 

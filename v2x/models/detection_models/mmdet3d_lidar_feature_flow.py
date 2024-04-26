@@ -141,6 +141,7 @@ def inference_detector_feature_fusion(model, veh_bin, inf_bin, rotation, transla
         data["points"] = data["points"][0].data
     # forward the model
     # print(data["img_metas"])
+    "result = model(return_loss=False, rescale=True, **data)"
     with torch.no_grad():
         result = model(return_loss=False, rescale=True, **data)
     return result, data

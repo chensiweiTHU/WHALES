@@ -40,6 +40,7 @@ model = dict(
         channels=[16, 32, 64, 128, 128], 
         out_channel=128,
         ),
+    fusion_channels=[256,192,128],
     dense_head=dict(
         type='VoxelNeXtHead',
         model_cfg=dict(

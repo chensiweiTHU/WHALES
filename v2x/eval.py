@@ -34,7 +34,7 @@ def eval_vic(args, dataset, model, evaluator):
                 veh_id = dataset.data[idx][0]["vehicle_pointcloud_path"].split("/")[-1].replace(".pcd", "")
             except Exception:
                 veh_id = VICFrame["vehicle_pointcloud_path"].split("/")[-1].replace(".pcd", "")
-
+        # model.eval()
         pred = model(
             VICFrame,
             filt,

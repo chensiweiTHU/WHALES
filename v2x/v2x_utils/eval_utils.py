@@ -5,7 +5,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-from config import superclass
+from v2x.config import superclass
 
 iou_threshold_dict = {
     "car": [0.3, 0.5, 0.7],

@@ -2,13 +2,13 @@ dataset_type = 'V2XDataset'
 plugin = True
 plugin_dir = "mmdet3d_plugin/"
 data_root = './data/DAIR-V2X-C/cooperative-vehicle-infrastructure/'
-data_info_train_path = './data_process/dair-v2x/flow_data_jsons/flow_data_info_train.json'
-data_info_val_path = './data_process/dair-v2x/flow_data_jsons/flow_data_info_val_0.json'
+data_info_train_path = './data_process/dairv2x/flow_data_jsons/flow_data_info_train.json'
+data_info_val_path = './data_process/dairv2x/flow_data_jsons/flow_data_info_val_0.json'
 # work_dir = './ffnet_work_dir/work_dir_baseline'
-
-class_names = ['Pedestrian', 'Cyclist', 'Car']
+find_unused_parameters=True
+class_names = ['Car', 'others']
 point_cloud_range = [0, -46.08, -3, 92.16, 46.08, 1]
-voxel_size = [0.16, 0.16, 0.5]
+voxel_size = [0.04, 0.04, 0.0625]
 l = int((point_cloud_range[3]-point_cloud_range[0])/voxel_size[0])
 h = int((point_cloud_range[4]-point_cloud_range[1])/voxel_size[1])
 output_shape = [h, l]
@@ -19,15 +19,15 @@ z_center_car = -2.66
 # voxel_size=[0.2, 0.2, 0.5]
 num_point_features=4
 # point_cloud_range=[-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
-grid_size = [576, 576, 8]
+grid_size = [2304, 2304, 64]
 
 model = dict(
-    type='VoxelNeXtCoopertive',
+    type='VoxelNeXtCoopertiveTemporal',
     pts_voxel_layer=dict(
-        max_num_points=10,
+        max_num_points=1,
         point_cloud_range=point_cloud_range,
         voxel_size=voxel_size,
-        max_voxels=(120000, 160000)),
+        max_voxels=(240000, 320000)),
     pts_voxel_encoder=dict(
             type='MeanVFE',
             num_point_features=num_point_features
@@ -41,24 +41,25 @@ model = dict(
         out_channel=128,
         ),
     fusion_channels=[256,192,128],
+    temp_fusion_channels=[256,192,128],
     dense_head=dict(
         type='VoxelNeXtHead',
         model_cfg=dict(
         class_agnostic=False,
         input_features=128,
-        class_names_each_head=[['Pedestrian'], ['Cyclist'], ['Car']],#[['car'], ['truck', 'construction_vehicle'], ['bus', 'trailer'], ['barrier'], ['motorcycle', 'bicycle'], ['pedestrian', 'traffic_cone']],
+        class_names_each_head=[['Car','others']],#[['car'], ['truck', 'construction_vehicle'], ['bus', 'trailer'], ['barrier'], ['motorcycle', 'bicycle'], ['pedestrian', 'traffic_cone']],
         shared_conv_channel=128,
         kernel_size_head=3,
         use_bias_before_norm=True,
         num_hm_conv=2,
         separate_head_cfg=dict(
-            head_order=['center', 'center_z', 'dim', 'rot', 'vel'],\
+            head_order=['center', 'center_z', 'dim', 'rot'],#, 'vel'],
             head_dict={
                 'center': {'out_channels': 2, 'num_conv': 2},
                 'center_z': {'out_channels': 1, 'num_conv': 2},
                 'dim': {'out_channels': 3, 'num_conv': 2},
                 'rot': {'out_channels': 2, 'num_conv': 2},
-                'vel': {'out_channels': 2, 'num_conv': 2},
+                # 'vel': {'out_channels': 2, 'num_conv': 2},
             }
         ),
         target_assigner_config=dict(
@@ -68,11 +69,11 @@ model = dict(
             min_radius=2
         ),
         loss_config=dict(
-            loss_weights={'cls_weight': 1.0, 'loc_weight': 0.25, 'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.2, 0.2, 1.0, 1.0]}
+            loss_weights={'cls_weight': 1.0, 'loc_weight': 0.25, 'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.2, 0.2]}#, 1.0, 1.0]}
         ),
         post_processing=dict(
             score_thresh=0.1,
-            post_center_limit_range=[-61.2, -61.2, -2.0, 61.2, 61.2, 2.0],
+            post_center_limit_range=[-15.12, -61.2, -4, 107.28, 61.2, 2],
             max_obj_per_sample=500,
             nms_config=dict(
                 nms_type='nms_gpu',
@@ -83,7 +84,7 @@ model = dict(
         )
     ),
     input_channels = 128,
-    num_class=3,
+    num_class=2,
     class_names = class_names,
     grid_size = grid_size,
     point_cloud_range = point_cloud_range,
@@ -98,17 +99,18 @@ model = dict(
         voxel_size=voxel_size[:2],
         code_size=9),
     ),
-    proj_first=True,
     post_processing=dict(
         recall_thresh_list=[0.3, 0.5, 0.7],
         eval_metric='kitti'
-    )
+    ),
+    proj_first=False,
+    single=False
 )
 file_client_args = dict(backend='disk')
 
 data = dict(
-    samples_per_gpu=4,
-    workers_per_gpu=4,
+    samples_per_gpu=6,
+    workers_per_gpu=6,
     train=dict(
         type='RepeatDataset',
         times=2,
@@ -135,6 +137,7 @@ data = dict(
                     type='LoadAnnotations3D',
                     with_bbox_3d=True,
                     with_label_3d=True),
+                dict(type='ProjectCooperativePCD2ego'),
                 # dict(
                 #     type='ObjectSample',
                 #     db_sampler=dict(
@@ -159,8 +162,14 @@ data = dict(
                 #     rot_range=[-0.78539816, 0.78539816],
                 #     scale_ratio_range=[0.95, 1.05]),
                 dict(
-                    type='PointsRangeFilter',
+                    type='PointsRangeFilterCP',
                     point_cloud_range=point_cloud_range),
+                dict(type='PointShuffleCP'),
+                # dict(
+                #     type='PointQuantization',
+                #     voxel_size = voxel_size,
+                #     quantize_coords_range = point_cloud_range,
+                #     ),
                 dict(
                     type='ObjectRangeFilter',
                     point_cloud_range=point_cloud_range),
@@ -184,7 +193,9 @@ data = dict(
             classes=class_names,
             test_mode=False,
             pcd_limit_range=point_cloud_range,
-            box_type_3d='LiDAR')),
+            box_type_3d='LiDAR',
+            history = 1
+            )),
     val=dict(
         type=dataset_type,
         data_root=data_root,
@@ -237,7 +248,9 @@ data = dict(
         classes=class_names,
         test_mode=True,
         pcd_limit_range=point_cloud_range,
-        box_type_3d='LiDAR'),
+        box_type_3d='LiDAR',
+        history = 1
+        ),
     test=dict(
         type=dataset_type,
         data_root=data_root,
@@ -290,7 +303,8 @@ data = dict(
         classes=class_names,
         test_mode=True,
         pcd_limit_range=point_cloud_range,
-        box_type_3d='LiDAR'))
+        box_type_3d='LiDAR',
+        history = 1))
 evaluation = dict(
     interval=100,
     pipeline=[
@@ -319,14 +333,14 @@ momentum_config = dict(
     target_ratio=(0.8947368421052632, 1),
     cyclic_times=1,
     step_ratio_up=0.4)
-runner = dict(type='EpochBasedRunner', max_epochs=40)
-checkpoint_config = dict(interval=2)
+runner = dict(type='EpochBasedRunner', max_epochs=30)
+checkpoint_config = dict(interval=1)
 log_config = dict(
-    interval=50,
+    interval=10,
     hooks=[dict(type='TextLoggerHook'),
            dict(type='TensorboardLoggerHook')])
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-load_from = None
+load_from = './work_dirs/cooperative_voxel_next_temporal/epoch_2.pth'
 resume_from = None
 workflow = [('train', 1)]

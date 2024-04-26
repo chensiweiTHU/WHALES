@@ -24,7 +24,7 @@ grid_size = [2304, 2304, 64]
 model = dict(
     type='VoxelNeXtCoopertive',
     pts_voxel_layer=dict(
-        max_num_points=2,
+        max_num_points=1,
         point_cloud_range=point_cloud_range,
         voxel_size=voxel_size,
         max_voxels=(240000, 320000)),
@@ -40,6 +40,7 @@ model = dict(
         channels=[32, 64, 128, 256, 256], 
         out_channel=256,
         ),
+    fusion_channels=[512,384,256],
     dense_head=dict(
         type='VoxelNeXtHead',
         model_cfg=dict(
@@ -97,10 +98,6 @@ model = dict(
         voxel_size=voxel_size[:2],
         code_size=9),
     ),
-    #     POST_PROCESSING:
-#         RECALL_THRESH_LIST: [0.3, 0.5, 0.7]
-
-#         EVAL_METRIC: kitti
     post_processing=dict(
         recall_thresh_list=[0.3, 0.5, 0.7],
         eval_metric='kitti'
@@ -162,8 +159,10 @@ data = dict(
                 dict(
                     type='GlobalRotScaleTransCP',
                     #rot_range=[-0.78539816, 0.78539816], #go to nan when inf no point
-                    rot_range=[-0.38269908, 0.38269908],
-                    scale_ratio_range=[0.95, 1.05]),
+                    # rot_range=[-0.38269908, 0.38269908],
+                    # scale_ratio_range=[0.95, 1.05]),
+                    rot_range=[-0, 0],
+                    scale_ratio_range=[1, 1]),
                 dict(type='RandomFlip3DCP', flip_ratio_bev_horizontal=0.5),
                 dict(type='GlobalTransCP',trans_factor=[+46.08,0,0]),
                 dict(
@@ -234,11 +233,6 @@ data = dict(
                     # dict(
                     #     type='PointsRangeFilter',
                     #     point_cloud_range=point_cloud_range),
-                    dict(
-                    type='PointQuantization',
-                    voxel_size = voxel_size,
-                    quantize_coords_range = point_cloud_range,
-                    ),
                     dict(
                         type='DefaultFormatBundle3D',
                         class_names=class_names,
@@ -345,7 +339,7 @@ momentum_config = dict(
     target_ratio=(0.8947368421052632, 1),
     cyclic_times=1,
     step_ratio_up=0.4)
-runner = dict(type='EpochBasedRunner', max_epochs=50)
+runner = dict(type='EpochBasedRunner', max_epochs=30)
 checkpoint_config = dict(interval=1)
 log_config = dict(
     interval=10,

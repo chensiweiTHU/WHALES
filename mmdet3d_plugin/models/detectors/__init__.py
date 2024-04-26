@@ -21,11 +21,13 @@ from .V2VNet import V2VNet
 from .OpenCood_point_pillar import PointPillarOpenCOOD
 from .voxelnext import VoxelNeXt
 from .voxelnext_Cooperative import VoxelNeXtCoopertive
+from .voxelnext_Cooperative_Temporal import VoxelNeXtCoopertiveTemporal
 from .v2x_voxelnet import V2XVoxelNet
 from .feature_flownet import FeatureFlowNet
 __all__ = [
     'MVXTwoStageDetector', 'VoxelNet', 'OpenCoodDetector', 'DynamicMVXFasterRCNN', 'MVXFasterRCNN',
-    'FCooper', 'V2VNet', 'PointPillarOpenCOOD', 'VoxelNeXt', 'V2XVoxelNet', 'FeatureFlowNet', 'VoxelNeXtCoopertive'
+    'FCooper', 'V2VNet', 'PointPillarOpenCOOD', 'VoxelNeXt', 'V2XVoxelNet', 'FeatureFlowNet', 
+    'VoxelNeXtCoopertive', 'VoxelNeXtCoopertiveTemporal'
 ]
 # __all__ = [
 #     'Base3DDetector', 'VoxelNet', 'DynamicVoxelNet', 'MVXTwoStageDetector',
