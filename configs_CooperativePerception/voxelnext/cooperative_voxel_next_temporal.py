@@ -255,7 +255,7 @@ data = dict(
         type=dataset_type,
         data_root=data_root,
         ann_file=data_info_val_path,
-        split='training',
+        split='val',
         pts_prefix='velodyne_reduced',
         pipeline=[
             dict(
@@ -270,6 +270,7 @@ data = dict(
                 load_dim=4,
                 use_dim=4,
                 sensor_view='infrastructure'),
+            dict(type='ProjectCooperativePCD2ego'),
             dict(
                 type='MultiScaleFlipAug3D',
                 img_scale=(h, l),
@@ -282,9 +283,9 @@ data = dict(
                     #     scale_ratio_range=[1.0, 1.0],
                     #     translation_std=[0, 0, 0]),
                     # dict(type='RandomFlip3D'),
-                    # dict(
-                    #     type='PointsRangeFilter',
-                    #     point_cloud_range=point_cloud_range),
+                    dict(
+                        type='PointsRangeFilterCP',
+                        point_cloud_range=point_cloud_range),
                     dict(
                         type='DefaultFormatBundle3D',
                         class_names=class_names,
@@ -296,7 +297,7 @@ data = dict(
                                'pcd_vertical_flip', 'box_mode_3d', 'box_type_3d',
                                'img_norm_cfg', 'pcd_trans', 'sample_idx',
                                'pcd_scale_factor', 'pcd_rotation', 'pts_filename',
-                               'transformation_3d_flow', 'inf2veh'))
+                               'transformation_3d_flow', 'inf2veh','infrastructure_pts_filename','vehicle_pts_filename'))
                 ])
         ],
         modality=dict(use_lidar=True, use_camera=False),
@@ -304,7 +305,7 @@ data = dict(
         test_mode=True,
         pcd_limit_range=point_cloud_range,
         box_type_3d='LiDAR',
-        history = 1))
+        history = 0))
 evaluation = dict(
     interval=100,
     pipeline=[

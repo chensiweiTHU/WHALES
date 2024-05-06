@@ -5,6 +5,8 @@ _base_ = [
     '../_base_/schedules/schedule_2x.py',
     '../_base_/default_runtime.py',
 ]
+plugin = True
+plugin_dir = "mmdet3d_plugin/"
 class_names = [
     'Vehicle', 'Pedestrian', 'Cyclist'
 ]
@@ -84,8 +86,8 @@ test_pipeline = [
         use_dim=4,
         file_client_args=file_client_args),
     dict(type='AgentScheduling',
-        mode="mass", 
-        # submode="UCB-1", 
+        mode="unicast",
+        submode="best_agent",
         basic_data_limit=6e6
         ),
     dict(
@@ -139,6 +141,11 @@ eval_pipeline = [
         load_dim=4,
         use_dim=4,
         file_client_args=file_client_args),
+    dict(type='AgentScheduling',
+        mode="groupcast",
+        submode="full_random", 
+        basic_data_limit=6e6
+        ),
     dict(
         type='LoadPointsFromCooperativeAgents',
         coord_type='LIDAR',
@@ -169,7 +176,7 @@ eval_pipeline = [
 # model settings
 data = dict(
     samples_per_gpu=1,
-    workers_per_gpu=1, #调试时用0
+    workers_per_gpu=0, #调试时用0
     train=dict(
         type=dataset_type,
         data_root=data_root,

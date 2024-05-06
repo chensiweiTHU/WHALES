@@ -2,8 +2,8 @@ dataset_type = 'V2XDataset'
 plugin = True
 plugin_dir = "mmdet3d_plugin/"
 data_root = './data/DAIR-V2X-C/cooperative-vehicle-infrastructure/'
-data_info_train_path = './data_process/dair-v2x/flow_data_jsons/flow_data_info_train.json'
-data_info_val_path = './data_process/dair-v2x/flow_data_jsons/flow_data_info_val_0.json'
+data_info_train_path = './data_process/dairv2x/flow_data_jsons/flow_data_info_train.json'
+data_info_val_path = './data_process/dairv2x/flow_data_jsons/flow_data_info_val_0.json'
 # work_dir = './ffnet_work_dir/work_dir_baseline'
 
 class_names = ['Car', 'others']
@@ -256,7 +256,7 @@ data = dict(
         type=dataset_type,
         data_root=data_root,
         ann_file=data_info_val_path,
-        split='training',
+        split='testing',
         pts_prefix='velodyne_reduced',
         pipeline=[
             dict(

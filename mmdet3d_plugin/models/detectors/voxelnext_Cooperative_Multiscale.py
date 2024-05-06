@@ -18,17 +18,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 # from mmdet3d.core.bbox import LiDARInstance3DBoxes
 @DETECTORS.register_module(force=True)
-class VoxelNeXtCoopertiveTemporal(Base3DDetector):
+class VoxelNeXtCoopertiveMultiscale(Base3DDetector):
     """this is the cooperaivte version of VoxelNeXt, 
     which is used to fuse the results of multiple agents in DAIR-V2X dataset."""
     def __init__(self, pts_voxel_layer,pts_voxel_encoder,
-                  backbone_3d, fusion_channels, temp_fusion_channels, dense_head, post_processing, single=False,proj_first=False,raw=False, **kwargs ):
-                  #num_class, dataset):
-        super(VoxelNeXtCoopertiveTemporal,self).__init__()
+                  backbone_3d, fusion_channels, temp_fusion_channels, dense_head, post_processing, single=False,proj_first=False,raw=False, 
+                  scale_thre=[1.5,3],**kwargs ):
+                  #scale_thre=[1.5,3]#num_class, dataset):
+        super(VoxelNeXtCoopertiveMultiscale,self).__init__()
         # self.module_list = self.build_networks()
         self.single = single
         self.proj_first = proj_first
         self.raw = raw
+        self.scale_thre = scale_thre
         if pts_voxel_layer:
             self.pts_voxel_layer = Voxelization(**pts_voxel_layer)
         if pts_voxel_encoder:
@@ -277,21 +279,7 @@ class VoxelNeXtCoopertiveTemporal(Base3DDetector):
                 # heat_map = his_pts_feats['pred_dicts'][0]['hm'][:,0].unsqueeze(1)
                 # heat_map_coord = his_pts_feats['encoded_spconv_tensor'].indices
                 # heat_map = spconv.SparseConvTensor(heat_map,heat_map_coord,his_pts_feats['encoded_spconv_tensor'].spatial_shape,his_pts_feats['batch_size'])
-                # heat_map = heat_map.dense()
-                his_boxes = his_pts_feats['final_box_dicts'][0]['pred_boxes']
-                "filter boxes with class 0 "
-                labels = his_pts_feats['final_box_dicts'][0]['pred_labels']
-                mask = labels == 1
-                his_boxes = his_boxes[mask]
-                "get LiDARInstance3DBoxes"
-                box_cls = type(gt_bboxes_3d[0])
-                his_boxes = box_cls(his_boxes)
-                points = points[0]
-                "get points in boxes"
-                in_boxes = his_boxes.points_in_boxes(points[0][:,:3])
-
-
-                
+                # heat_map = heat_map.dense()      
                 "judge wether points in box"
                 # for i in range(len(boxes)):
                 #     box = boxes[i]
@@ -307,7 +295,35 @@ class VoxelNeXtCoopertiveTemporal(Base3DDetector):
                 # his_pts_feats = self.temporal_fusion(pts_feats, his_output_dict, img_metas)
         else:
             his_pts_feats = None
-            
+        if his_pts_feats is not None:
+            for i in range(len(his_pts_feats['final_box_dicts'])):
+                his_boxes = his_pts_feats['final_box_dicts'][i]['pred_boxes']
+                "filter boxes with class 0 "
+                labels = his_pts_feats['final_box_dicts'][i]['pred_labels']
+                mask = labels == 1
+                his_boxes = his_boxes[mask]
+                "get LiDARInstance3DBoxes"
+                small_boxes = copy.deepcopy(his_boxes)
+                small_boxes[3:6] = small_boxes[3:6] * self.scale_thre[0]    
+                large_boxes = copy.deepcopy(his_boxes)
+                large_boxes[3:6] = large_boxes[3:6] * self.scale_thre[1]
+
+                box_cls = type(gt_bboxes_3d[0])
+                his_boxes = box_cls(his_boxes)
+                small_boxes = box_cls(small_boxes)
+                large_boxes = box_cls(large_boxes)
+
+                "get points in boxes"
+
+                in_boxes_small = small_boxes.points_in_boxes(points[i][:,:3])
+                in_boxes_large = large_boxes.points_in_boxes(points[i][:,:3])
+                points_1 = points[i][in_boxes_small]
+                points_2 = points[i][(not in_boxes_small) and in_boxes_large]
+                points_3 = points[i][(not in_boxes_small) and (not in_boxes_large)]
+                "we use 3 scales to quantify the points"
+
+                
+
         if not self.single and not self.raw:
             img_feats_inf, voxel_feats_inf = self.extract_feat(
             infrastructure_points, img=infrastructure_img, img_metas=img_metas)

@@ -13,10 +13,11 @@ from mmcv.parallel import DataContainer as DC
 
 @PIPELINES.register_module()
 class PointQuantization(object):
-    def __init__(self, voxel_size, quantize_coords_range):
+    def __init__(self, voxel_size, quantize_coords_range, q_delta=1.6e-5):
         self.voxel_size = np.array(voxel_size)
         self.quantize_coords_range = quantize_coords_range
         self.low_bound = np.array(quantize_coords_range[:3])
+        self.q_delta = q_delta
     # 2340x2304x16 = 8.5e7 log2(8.5e7) = 26.4 4+1=5B for each point
     def __call__(self, results):
         points = results['infrastructure_points']
@@ -25,6 +26,8 @@ class PointQuantization(object):
         points_np[:, :3] = np.around(points_np[:, :3] / self.voxel_size)
         points_np[:, :3] *= self.voxel_size
         points_np[:, :3] += (self.low_bound + self.voxel_size / 2)
+        "we assume that intensity is always ≥ 0 and quantisize uniformly"
+        points_np[:,3] = np.around(points_np[:,3]/self.q_delta)*self.q_delta
         points.tensor = torch.from_numpy(points_np)
         return results
 
@@ -239,6 +242,11 @@ class RawlevelPointCloudFusion(object):
             points = results['points']
             points_class = type(points)
             points = points.tensor.numpy()
+            visualization = False
+            if visualization:
+                save_path = './visual/'
+                "save raw points and fused points in .bin"
+                points.tofile(save_path+results['sample_idx']+'raw.bin')
             attribute_dims = None
             cp_points_list = [points]
             transmitted_data_size = 0
@@ -261,6 +269,8 @@ class RawlevelPointCloudFusion(object):
                 matrix_e[:3, 3] = t_vector
 
                 cp_points = cp_points.tensor.numpy().T
+                if visualization:
+                    cp_points.T.tofile(save_path+results['sample_idx']+veh_token+'.bin')
                 if 'cooperative_datasize_limit'  in results.keys():
                     data_size_limit = results['cooperative_datasize_limit'][veh_token]
                 else:
@@ -276,6 +286,9 @@ class RawlevelPointCloudFusion(object):
                 cp_points = cp_points.T
                 cp_points_list.append(cp_points)
             points = np.concatenate(cp_points_list, axis=0)
+            if visualization:
+                points=points.astype(np.float32)
+                points.tofile(save_path+results['sample_idx']+'fused.bin')
             vis=False
             if vis:
                 from mmdet3d.core.visualizer.show_result import show_result
@@ -386,30 +399,30 @@ class AgentScheduling(object):
                     results['cooperative_datasize_limit'] = {
                         cooperative_agent:self.basic_data_limit
                     }
-        elif self.mode == "best_agent":
-            if 'history_results' not in results.keys():
-                pass
-            agents_data = self.withinRange(results)
-            veh_token = results['veh_token']
-            scene_token = results['scene_token']
-            best_agent = None
-            max_vehicles = -1
-            max_score = -1
+            if self.submode == "best_agent":
+                if 'history_results' not in results.keys():
+                    pass
+                agents_data = self.withinRange(results)
+                veh_token = results['veh_token']
+                scene_token = results['scene_token']
+                best_agent = None
+                max_vehicles = -1
+                max_score = -1
 
-            for agent, data in agents_data.items():
-                num_vehicles = data['num_vehicles_within_range']
-                avg_score = np.mean(data['scores']) if data['scores'] else 0
-                if (num_vehicles > max_vehicles or (num_vehicles == max_vehicles and avg_score > max_score)) and agent != veh_token:
-                    best_agent = agent
-                    max_vehicles = num_vehicles
-                    max_score = avg_score
-            results['cooperative_veh_tokens'] = [best_agent]
-            results['cooperative_agents'] = {
-                best_agent: results['cooperative_agents'][best_agent]
-            }
-            results['cooperative_datasize_limit'] = {
-                best_agent: self.basic_data_limit
-            }
+                for agent, data in agents_data.items():
+                    num_vehicles = data['num_vehicles_within_range']
+                    avg_score = np.mean(data['scores']) if data['scores'] else 0
+                    if (num_vehicles > max_vehicles or (num_vehicles == max_vehicles and avg_score > max_score)) and agent != veh_token:
+                        best_agent = agent
+                        max_vehicles = num_vehicles
+                        max_score = avg_score
+                results['cooperative_veh_tokens'] = [best_agent]
+                results['cooperative_agents'] = {
+                    best_agent: results['cooperative_agents'][best_agent]
+                }
+                results['cooperative_datasize_limit'] = {
+                    best_agent: self.basic_data_limit
+                }
         elif self.mode == "UCB":
             pass
 

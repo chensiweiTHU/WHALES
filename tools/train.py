@@ -233,6 +233,33 @@ def main():
             if hasattr(datasets[0], 'PALETTE') else None)
     # add an attribute for visualization convenience
     model.CLASSES = datasets[0].CLASSES
+    get_statistics = False
+    quantisize = False
+    if get_statistics:
+        import numpy as np
+        point_len = []
+        infra_point_len=[]
+        for i in range(len(datasets[0])):
+            data = datasets[0][i]
+            if quantisize:
+                "filter out non duplicated coords"
+                coords = data['infrastructure_points'].data.numpy()[:,:3]
+                coords = np.unique(coords, axis=0)
+                infra_point_len.append(coords.shape[0])
+            else:
+                infra_point_len.append(data['infrastructure_points'].data.shape[0])
+            point_len.append(data['points'].data.shape[0])   
+            if i%100==0:
+                print(i)
+        point_len = np.array(point_len)
+        infra_point_len = np.array(infra_point_len)
+        print('mean veh point length:',np.mean(point_len))
+        print('mean infra point length:',np.mean(infra_point_len))
+        np.save('veh_point_len.npy',point_len)
+        np.save('infra_point_len.npy',infra_point_len)
+        # import matplotlib.pyplot as plt
+        # plt.hist(infra_point_len, bins=100)
+        # plt.show()
     train_model(
         model,
         datasets,

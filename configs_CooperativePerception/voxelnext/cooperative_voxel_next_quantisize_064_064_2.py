@@ -2,10 +2,10 @@ dataset_type = 'V2XDataset'
 plugin = True
 plugin_dir = "mmdet3d_plugin/"
 data_root = './data/DAIR-V2X-C/cooperative-vehicle-infrastructure/'
-data_info_train_path = './data_process/dair-v2x/flow_data_jsons/flow_data_info_train.json'
-data_info_val_path = './data_process/dair-v2x/flow_data_jsons/flow_data_info_val_0.json'
+data_info_train_path = './data_process/dairv2x/flow_data_jsons/flow_data_info_train.json'
+data_info_val_path = './data_process/dairv2x/flow_data_jsons/flow_data_info_val_0.json'
 # work_dir = './ffnet_work_dir/work_dir_baseline'
-
+find_unused_parameters=True
 class_names = ['Car', 'others']
 point_cloud_range = [0, -46.08, -3, 92.16, 46.08, 1]
 voxel_size = [0.64, 0.64, 2]
@@ -103,8 +103,8 @@ model = dict(
         recall_thresh_list=[0.3, 0.5, 0.7],
         eval_metric='kitti'
     ),
-    single=False,
-    proj_first=True,
+    proj_first=False,
+    single=False
 )
 file_client_args = dict(backend='disk')
 
@@ -137,6 +137,7 @@ data = dict(
                     type='LoadAnnotations3D',
                     with_bbox_3d=True,
                     with_label_3d=True),
+                dict(type='ProjectCooperativePCD2ego'),
                 # dict(
                 #     type='ObjectSample',
                 #     db_sampler=dict(
@@ -161,8 +162,9 @@ data = dict(
                 #     rot_range=[-0.78539816, 0.78539816],
                 #     scale_ratio_range=[0.95, 1.05]),
                 dict(
-                    type='PointsRangeFilter',
+                    type='PointsRangeFilterCP',
                     point_cloud_range=point_cloud_range),
+                dict(type='PointShuffleCP'),
                 dict(
                     type='PointQuantization',
                     voxel_size = voxel_size,
@@ -254,7 +256,7 @@ data = dict(
         type=dataset_type,
         data_root=data_root,
         ann_file=data_info_val_path,
-        split='training',
+        split='val',
         pts_prefix='velodyne_reduced',
         pipeline=[
             dict(
@@ -269,6 +271,7 @@ data = dict(
                 load_dim=4,
                 use_dim=4,
                 sensor_view='infrastructure'),
+            dict(type='ProjectCooperativePCD2ego'),
             dict(
                 type='MultiScaleFlipAug3D',
                 img_scale=(h, l),

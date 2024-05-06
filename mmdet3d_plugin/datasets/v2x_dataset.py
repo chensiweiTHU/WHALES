@@ -16,9 +16,21 @@ from mmdet3d.core.bbox import (Box3DMode, CameraInstance3DBoxes, Coord3DMode,
 from mmdet3d.datasets.custom_3d import Custom3DDataset
 from .pipelines import Compose
 from v2x.dataset.base_dataset import DAIRV2XDataset, get_annos, build_path_to_info, build_frame_to_info
-from v2x.dataset.dataset_utils import load_json
+from v2x.dataset.dataset_utils import load_json, InfFrame, VehFrame, VICFrame, Label
 from v2x.v2x_utils import id_to_str
 from data_process.dairv2x.preprocess import trans_lidar_i2v
+from v2x.v2x_utils import (
+    mkdir,
+    get_arrow_end,
+    range2box,
+    box_translation,
+    points_translation,
+    get_trans,
+    diff_label_filt,
+    Filter,
+    RectFilter,
+    Evaluator
+)
 @DATASETS.register_module()
 class V2XDataset(Custom3DDataset):
     r"""DAIR-V2X Dataset.
@@ -59,6 +71,7 @@ class V2XDataset(Custom3DDataset):
                  data_root,
                  ann_file,
                  split,
+                 split_path='./data_process/dairv2x/flow_data_jsons/flow_data_info_val_0.json',
                  pts_prefix='velodyne',
                  pipeline=None,
                  classes=None,
@@ -67,6 +80,7 @@ class V2XDataset(Custom3DDataset):
                  filter_empty_gt=True,
                  test_mode=False,
                  pcd_limit_range=[0, -40, -3, 70.4, 40, 0.0],
+                 extended_range =[0, -39.68, -3, 100, 39.68, 1],
                  history=0):
         super().__init__(
             data_root=data_root,
@@ -81,31 +95,34 @@ class V2XDataset(Custom3DDataset):
         self.root_split = os.path.join(self.data_root, split)
         assert self.modality is not None
         self.pcd_limit_range = pcd_limit_range
+        self.split_path = split_path
+        extended_range = range2box(np.array(extended_range))
+        self.extended_range = extended_range
         self.pts_prefix = pts_prefix
         self.history = history
         self.__load_v2x_annotations()
-        if self.history != 0:
-            if self.modality['use_lidar']==True:
-                sensortype = 'lidar'
-            self.inf_path2info = build_path_to_info(
-                "infrastructure-side",
-                load_json(osp.join(self.data_root, "infrastructure-side/data_info.json")),
-                sensortype,
-            )
-            self.veh_path2info = build_path_to_info(
-                "vehicle-side",
-                load_json(osp.join(self.data_root, "vehicle-side/data_info.json")),
-                sensortype,
-            )
-            self.frame_pairs = load_json(osp.join(self.data_root, "cooperative/data_info.json"))
-            for i in range(len(self.data_infos)):
-                inf_path = self.data_infos[i]['infrastructure_pointcloud_bin_path']
-                # we use bin instead of pcd, so we go back to pcd
-                inf_path = inf_path.replace(".bin", ".pcd")
-                self.inf_path2info[inf_path].update(datainfo_id = i)
-                veh_path = self.data_infos[i]['vehicle_pointcloud_bin_path']
-                veh_path = veh_path.replace(".bin", ".pcd")
-                self.veh_path2info[veh_path].update(datainfo_id = i)
+        self.frame_pairs = load_json(self.split_path)
+
+        if self.modality['use_lidar']==True:
+            sensortype = 'lidar'
+        self.inf_path2info = build_path_to_info(
+            "infrastructure-side",
+            load_json(osp.join(self.data_root, "infrastructure-side/data_info.json")),
+            sensortype,
+        )
+        self.veh_path2info = build_path_to_info(
+            "vehicle-side",
+            load_json(osp.join(self.data_root, "vehicle-side/data_info.json")),
+            sensortype,
+        )
+        for i in range(len(self.data_infos)):
+            inf_path = self.data_infos[i]['infrastructure_pointcloud_bin_path']
+            # we use bin instead of pcd, so we go back to pcd
+            inf_path = inf_path.replace(".bin", ".pcd")
+            self.inf_path2info[inf_path].update(datainfo_id = i)
+            veh_path = self.data_infos[i]['vehicle_pointcloud_bin_path']
+            veh_path = veh_path.replace(".bin", ".pcd")
+            self.veh_path2info[veh_path].update(datainfo_id = i)
 
     def __my_read_json(self, path_json):
         with open(path_json, 'r') as load_f:
@@ -263,9 +280,28 @@ class V2XDataset(Custom3DDataset):
         Returns:
             dict: Testing data dict of the corresponding index.
         """
+        if self.history != 0:
+            input_dict = self.get_data_info(index, history=self.history)
+        else:
+            input_dict = self.get_data_info(index)
+        if input_dict is None:
+            return None
+        if input_dict["history_data_infos"] is not None:
+            history_data_infos = input_dict["history_data_infos"]
+        else:
+            history_data_infos = None
         input_dict = self.get_data_info(index)
         self.pre_pipeline(input_dict)
         example = self.pipeline(input_dict)
+        if self.history != 0 and history_data_infos is not None:
+            history_data = []
+            for data_info in history_data_infos:
+                self.pre_pipeline(data_info)
+                history_example = self.pipeline(data_info)
+                history_data.append(history_example)
+            example["history_data"] = history_data
+        else:
+            example["history_data"] = []   
         return example
     def prev_inf_frame(self, index, latency=1, sensortype="lidar"):
         if sensortype == "lidar":
@@ -548,59 +584,6 @@ class V2XDataset(Custom3DDataset):
             img_filtered_annotations[key] = (
                 ann_info[key][relevant_annotation_indices])
         return img_filtered_annotations
-
-    def format_results(self,
-                       outputs,
-                       pklfile_prefix=None,
-                       submission_prefix=None):
-        """Format the results to pkl file.
-
-        Args:
-            outputs (list[dict]): Testing results of the dataset.
-            pklfile_prefix (str | None): The prefix of pkl files. It includes
-                the file path and the prefix of filename, e.g., "a/b/prefix".
-                If not specified, a temp file will be created. Default: None.
-            submission_prefix (str | None): The prefix of submitted files. It
-                includes the file path and the prefix of filename, e.g.,
-                "a/b/prefix". If not specified, a temp file will be created.
-                Default: None.
-
-        Returns:
-            tuple: (result_files, tmp_dir), result_files is a dict containing \
-                the json filepaths, tmp_dir is the temporal directory created \
-                for saving json files when jsonfile_prefix is not specified.
-        """
-        if pklfile_prefix is None:
-            tmp_dir = tempfile.TemporaryDirectory()
-            pklfile_prefix = osp.join(tmp_dir.name, 'results')
-        else:
-            tmp_dir = None
-
-        if not isinstance(outputs[0], dict):
-            result_files = None
-        elif 'pts_bbox' in outputs[0] or 'img_bbox' in outputs[0]:
-            result_files = dict()
-            for name in outputs[0]:
-                results_ = [out[name] for out in outputs]
-                pklfile_prefix_ = pklfile_prefix + name
-                if submission_prefix is not None:
-                    submission_prefix_ = submission_prefix + name
-                else:
-                    submission_prefix_ = None
-                if 'img' in name:
-                    result_files[name] = None
-                else:
-                    result_files_ = self.bbox2result_kitti(
-                        results_, self.CLASSES, pklfile_prefix_,
-                        submission_prefix_)
-                result_files[name] = result_files_
-        else:
-            print("format_results bbox2result_kitti: ", )
-            result_files = self.bbox2result_kitti(outputs, self.CLASSES,
-                                                  pklfile_prefix,
-                                                  submission_prefix)
-        return result_files, tmp_dir
-
     def evaluate(self,
                  results,
                  metric=None,
@@ -632,40 +615,181 @@ class V2XDataset(Custom3DDataset):
         Returns:
             dict[str, float]: Results of each evaluation metric.
         """
-        eval_types = ['bev', '3d']
-        result_files, tmp_dir = self.format_results(results, pklfile_prefix)
-        from mmdet3d.core.evaluation import kitti_eval
-        gt_annos = [info['annos'] for info in self.data_infos]
+        evaluator = Evaluator(['car'])
+        "add a bar"
+        for i,result in enumerate(results):
+            result = [result]
+            box, box_ry,  box_center,  arrow_ends = get_box_info(result)
+            remain = []
+            filt = RectFilter(self.extended_range[0])
+            if len(result[0]["boxes_3d"].tensor) != 0:
+                for j in range(box.shape[0]):
+                    if filt(box[j]):
+                        remain.append(j)
+            if len(remain) >= 1:
+                box =box[remain]
+                box_center = box_center[remain]
+                arrow_ends = arrow_ends[remain]
+                result[0]["scores_3d"]=result[0]["scores_3d"].numpy()[remain]
+                result[0]["labels_3d"]=result[0]["labels_3d"].numpy()[remain]
+            else:
+                box = np.zeros((1, 8, 3))
+                box_center = np.zeros((1, 1, 3))
+                arrow_ends = np.zeros((1, 1, 3))
+                result[0]["labels_3d"] = np.zeros((1))
+                result[0]["scores_3d"] = np.zeros((1))
+            # Save results
+            pred = gen_pred_dict(
+                        id,
+                        [],
+                        box,
+                        np.concatenate([box_center, arrow_ends], axis=1),
+                        np.array(1),
+                        result[0]["scores_3d"].tolist(),
+                        result[0]["labels_3d"].tolist(),
+                    )
+            for ii in range(len(pred["labels_3d"])):
+                    pred["labels_3d"][ii]=2
 
-        ###TODO: the effect of Bbox
-        for ii in range(len(result_files)):
-            for jj in range(len(result_files[ii]['bbox'])):
-                bbox = [0, 0, 100, 100]
-                result_files[ii]['bbox'][jj] = bbox
+            pred = {
+                "boxes_3d": np.array(pred["boxes_3d"]),
+                "labels_3d": np.array(pred["labels_3d"]),
+                "scores_3d": np.array(pred["scores_3d"]),
+            }
+            elem = self.frame_pairs[i]
+            inf_frame = self.inf_path2info[elem["infrastructure_pointcloud_path"]]
+            veh_frame = self.veh_path2info[elem["vehicle_pointcloud_path"]]
+            inf_frame = InfFrame(self.data_root + "/infrastructure-side/", inf_frame)
+            veh_frame = VehFrame(self.data_root + "/vehicle-side/", veh_frame)
+            vic_frame = VICFrame(self.data_root, elem, veh_frame, inf_frame, 0)
+            trans = vic_frame.transform(from_coord="Vehicle_lidar", to_coord="World")
+            filt_world = RectFilter(trans(self.extended_range)[0])
+            trans_1 = vic_frame.transform("World", "Vehicle_lidar")
+            label_v = Label(osp.join(self.data_root, elem["cooperative_label_path"]), filt_world)
+            label_v["boxes_3d"] = trans_1(label_v["boxes_3d"])
+            evaluator.add_frame(pred, label_v)
+            if i %100 ==0:
+                print(i)
+        evaluator.print_ap("3d")
+        evaluator.print_ap("bev")
+        # def format_results(self,
+    #                    outputs,
+    #                    pklfile_prefix=None,
+    #                    submission_prefix=None):
+    #     """Format the results to pkl file.
 
-        if isinstance(result_files, dict):
-            ap_dict = dict()
-            for name, result_files_ in result_files.items():
-                ap_result_str, ap_dict_ = kitti_eval(
-                    gt_annos,
-                    result_files_,
-                    self.CLASSES,
-                    eval_types=eval_types)
-                for ap_type, ap in ap_dict_.items():
-                    ap_dict[f'{name}/{ap_type}'] = float('{:.4f}'.format(ap))
+    #     Args:
+    #         outputs (list[dict]): Testing results of the dataset.
+    #         pklfile_prefix (str | None): The prefix of pkl files. It includes
+    #             the file path and the prefix of filename, e.g., "a/b/prefix".
+    #             If not specified, a temp file will be created. Default: None.
+    #         submission_prefix (str | None): The prefix of submitted files. It
+    #             includes the file path and the prefix of filename, e.g.,
+    #             "a/b/prefix". If not specified, a temp file will be created.
+    #             Default: None.
 
-                print_log(
-                    f'Results of {name}:\n' + ap_result_str, logger=logger)
-        else:
-            ap_result_str, ap_dict = kitti_eval(gt_annos, result_files,
-                                                self.CLASSES, eval_types=eval_types)
-            print_log('\n' + ap_result_str, logger=logger)
+    #     Returns:
+    #         tuple: (result_files, tmp_dir), result_files is a dict containing \
+    #             the json filepaths, tmp_dir is the temporal directory created \
+    #             for saving json files when jsonfile_prefix is not specified.
+    #     """
 
-        if tmp_dir is not None:
-            tmp_dir.cleanup()
-        if show:
-            self.show(results, out_dir, pipeline=pipeline)
-        return ap_dict
+    #     if pklfile_prefix is None:
+    #         tmp_dir = tempfile.TemporaryDirectory()
+    #         pklfile_prefix = osp.join(tmp_dir.name, 'results')
+    #     else:
+    #         tmp_dir = None
+
+    #     if not isinstance(outputs[0], dict):
+    #         result_files = None
+    #     elif 'pts_bbox' in outputs[0] or 'img_bbox' in outputs[0]:
+    #         result_files = dict()
+    #         for name in outputs[0]:
+    #             results_ = [out[name] for out in outputs]
+    #             pklfile_prefix_ = pklfile_prefix + name
+    #             if submission_prefix is not None:
+    #                 submission_prefix_ = submission_prefix + name
+    #             else:
+    #                 submission_prefix_ = None
+    #             if 'img' in name:
+    #                 result_files[name] = None
+    #             else:
+    #                 result_files_ = self.bbox2result_kitti(
+    #                     results_, self.CLASSES, pklfile_prefix_,
+    #                     submission_prefix_)
+    #             result_files[name] = result_files_
+    #     else:
+    #         print("format_results bbox2result_kitti: ", )
+    #         result_files = self.bbox2result_kitti(outputs, self.CLASSES,
+    #                                               pklfile_prefix,
+    #                                               submission_prefix)
+    #     return result_files, tmp_dir
+
+    # def evaluate(self,
+    #              results,
+    #              metric=None,
+    #              logger=None,
+    #              pklfile_prefix=None,
+    #              submission_prefix=None,
+    #              show=False,
+    #              out_dir=None,
+    #              pipeline=None):
+    #     """Evaluation in KITTI protocol.
+
+    #     Args:
+    #         results (list[dict]): Testing results of the dataset.
+    #         metric (str | list[str]): Metrics to be evaluated.
+    #         logger (logging.Logger | str | None): Logger used for printing
+    #             related information during evaluation. Default: None.
+    #         pklfile_prefix (str | None): The prefix of pkl files. It includes
+    #             the file path and the prefix of filename, e.g., "a/b/prefix".
+    #             If not specified, a temp file will be created. Default: None.
+    #         submission_prefix (str | None): The prefix of submission datas.
+    #             If not specified, the submission data will not be generated.
+    #         show (bool): Whether to visualize.
+    #             Default: False.
+    #         out_dir (str): Path to save the visualization results.
+    #             Default: None.
+    #         pipeline (list[dict], optional): raw data loading for showing.
+    #             Default: None.
+
+    #     Returns:
+    #         dict[str, float]: Results of each evaluation metric.
+    #     """
+    #     eval_types = ['bev', '3d']
+    #     result_files, tmp_dir = self.format_results(results, pklfile_prefix)
+    #     from mmdet3d.core.evaluation import kitti_eval
+    #     gt_annos = [info['annos'] for info in self.data_infos]
+
+    #     ###TODO: the effect of Bbox
+    #     for ii in range(len(result_files)):
+    #         for jj in range(len(result_files[ii]['bbox'])):
+    #             bbox = [0, 0, 100, 100]
+    #             result_files[ii]['bbox'][jj] = bbox
+
+    #     if isinstance(result_files, dict):
+    #         ap_dict = dict()
+    #         for name, result_files_ in result_files.items():
+    #             ap_result_str, ap_dict_ = kitti_eval(
+    #                 gt_annos,
+    #                 result_files_,
+    #                 self.CLASSES,
+    #                 eval_types=eval_types)
+    #             for ap_type, ap in ap_dict_.items():
+    #                 ap_dict[f'{name}/{ap_type}'] = float('{:.4f}'.format(ap))
+
+    #             print_log(
+    #                 f'Results of {name}:\n' + ap_result_str, logger=logger)
+    #     else:
+    #         ap_result_str, ap_dict = kitti_eval(gt_annos, result_files,
+    #                                             self.CLASSES, eval_types=eval_types)
+    #         print_log('\n' + ap_result_str, logger=logger)
+
+    #     if tmp_dir is not None:
+    #         tmp_dir.cleanup()
+    #     if show:
+    #         self.show(results, out_dir, pipeline=pipeline)
+    #     return ap_dict
 
     def bbox2result_kitti(self,
                           net_outputs,
@@ -996,3 +1120,32 @@ class V2XDataset(Custom3DDataset):
         if self.modality['use_camera']:
             pipeline.insert(0, dict(type='LoadImageFromFile'))
         return Compose(pipeline)
+def get_box_info(result):
+    for i in range(len(result[0]["boxes_3d"])):
+        temp=result[0]["boxes_3d"].tensor[i][4].clone()
+        result[0]["boxes_3d"].tensor[i][4]=result[0]["boxes_3d"].tensor[i][3]
+        result[0]["boxes_3d"].tensor[i][3]=temp
+        result[0]["boxes_3d"].tensor[i][6]=result[0]["boxes_3d"].tensor[i][6]
+    if len(result[0]["boxes_3d"].tensor) == 0:
+        box_lidar = np.zeros((1, 8, 3))
+        box_ry = np.zeros(1)
+    else:
+        box_lidar = result[0]["boxes_3d"].corners.numpy()
+        box_ry = result[0]["boxes_3d"].tensor[:, -1].numpy()
+    box_centers_lidar = box_lidar.mean(axis=1)
+    arrow_ends_lidar = get_arrow_end(box_centers_lidar, box_ry)
+    return box_lidar, box_ry, box_centers_lidar, arrow_ends_lidar
+def gen_pred_dict(id, timestamp, box, arrow, points, score, label):
+    if len(label) == 0:
+        score = [-2333]
+        label = [-1]
+    save_dict = {
+        "info": id,
+        "timestamp": timestamp,
+        "boxes_3d": box.tolist(),
+        "arrows": arrow.tolist(),
+        "scores_3d": score,
+        "labels_3d": label,
+        "points": points.tolist(),
+    }
+    return save_dict

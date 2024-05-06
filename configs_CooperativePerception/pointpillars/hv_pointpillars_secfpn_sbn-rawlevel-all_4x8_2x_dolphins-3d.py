@@ -86,8 +86,8 @@ test_pipeline = [
         ),
     # dict(type='LoadAnnotations3D'),
     dict(type='AgentScheduling',
-        mode="unicast", 
-        submode="random", 
+        mode="groupcast", 
+        submode="full_random", 
         basic_data_limit=6e6
         ),
     dict(type='RawlevelPointCloudFusion'),
