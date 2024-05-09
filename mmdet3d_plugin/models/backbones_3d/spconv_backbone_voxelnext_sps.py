@@ -2,7 +2,8 @@ from functools import partial
 import torch
 import torch.nn as nn
 from spconv.core import ConvAlgo
-
+from mmdet3d.models.builder import BACKBONES
+import numpy as np
 from ...utils.spconv_utils import replace_feature, spconv
 from ...models.model_utils.pruning_block import DynamicFocalPruningDownsample
 
@@ -90,18 +91,32 @@ class SparseBasicBlock(spconv.SparseModule):
 
         return out, batch_dict
 
-
+@BACKBONES.register_module()
 class VoxelResBackBone8xVoxelNeXtSPS(nn.Module):
     downsample_type = ["dynamicdownsample_attn", "dynamicdownsample_attn", "dynamicdownsample_attn", "spconv", "spconv"]
     downsample_pruning_ratio = [0.5, 0.5, 0.5, 0., 0.]
-    def __init__(self, model_cfg, input_channels, grid_size, **kwargs):
+        # def __init__(self, model_cfg, input_channels, grid_size, **kwargs):
+    #     super().__init__()
+    #     self.model_cfg = model_cfg
+    #     norm_fn = partial(nn.BatchNorm1d, eps=1e-3, momentum=0.01)
+
+    #     spconv_kernel_sizes = model_cfg.get('SPCONV_KERNEL_SIZES', [3, 3, 3, 3])
+    #     channels = model_cfg.get('CHANNELS', [16, 32, 64, 128, 128])
+    #     out_channel = model_cfg.get('OUT_CHANNEL', 128)
+    def __init__(self, input_channels, grid_size, spconv_kernel_sizes=[3, 3, 3, 3], \
+                 channels=[16, 32, 64, 128, 128], out_channel=128, **kwargs):
         super().__init__()
-        self.model_cfg = model_cfg
+        # self.model_cfg = model_cfg
+        norm_fn = partial(nn.BatchNorm1d, eps=1e-3, momentum=0.01)
+        grid_size = np.array(grid_size) # Z, Y, X
+    # def __init__(self, model_cfg, input_channels, grid_size, **kwargs):
+    #     super().__init__()
+        # self.model_cfg = model_cfg
         norm_fn = partial(nn.BatchNorm1d, eps=1e-3, momentum=0.01)
 
-        spconv_kernel_sizes = model_cfg.get('spconv_kernel_sizes', [3, 3, 3, 3])
-        channels = model_cfg.get('channels', [16, 32, 64, 128, 128])
-        out_channel = model_cfg.get('out_channel', 128)
+        # spconv_kernel_sizes = model_cfg.get('spconv_kernel_sizes', [3, 3, 3, 3])
+        # channels = model_cfg.get('channels', [16, 32, 64, 128, 128])
+        # out_channel = model_cfg.get('out_channel', 128)
 
         self.sparse_shape = grid_size[::-1] + [1, 0, 0]
 
@@ -119,21 +134,21 @@ class VoxelResBackBone8xVoxelNeXtSPS(nn.Module):
 
         self.conv2 = SparseSequentialBatchdict(
             # [1600, 1408, 41] <- [800, 704, 21]
-            block(channels[0], channels[1], spconv_kernel_sizes[0], norm_fn=norm_fn, stride=2, padding=int(spconv_kernel_sizes[0]//2), indice_key='spconv2', conv_type=self.downsample_type[0], pruning_ratio=self.downsample_pruning_ratio[0]),
+            block(channels[0], channels[1], spconv_kernel_sizes[0], norm_fn=norm_fn, stride=2, padding=int(spconv_kernel_sizes[0]//2), indice_key='spconv2', conv_type=self.downsample_type[0], pruning_ratio=self.downsample_pruning_ratio[0],loss_mode="focal_sprs"),
             SparseBasicBlock(channels[1], channels[1], norm_fn=norm_fn, indice_key='res2'),
             SparseBasicBlock(channels[1], channels[1], norm_fn=norm_fn, indice_key='res2'),
         )
 
         self.conv3 = SparseSequentialBatchdict(
             # [800, 704, 21] <- [400, 352, 11]
-            block(channels[1], channels[2], spconv_kernel_sizes[1], norm_fn=norm_fn, stride=2, padding=int(spconv_kernel_sizes[1]//2), indice_key='spconv3', conv_type=self.downsample_type[1], pruning_ratio=self.downsample_pruning_ratio[1]),
+            block(channels[1], channels[2], spconv_kernel_sizes[1], norm_fn=norm_fn, stride=2, padding=int(spconv_kernel_sizes[1]//2), indice_key='spconv3', conv_type=self.downsample_type[1], pruning_ratio=self.downsample_pruning_ratio[1],loss_mode="focal_sprs"),
             SparseBasicBlock(channels[2], channels[2], norm_fn=norm_fn, indice_key='res3'),
             SparseBasicBlock(channels[2], channels[2], norm_fn=norm_fn, indice_key='res3'),
         )
 
         self.conv4 = SparseSequentialBatchdict(
             # [400, 352, 11] <- [200, 176, 6]
-            block(channels[2], channels[3], spconv_kernel_sizes[2], norm_fn=norm_fn, stride=2, padding=int(spconv_kernel_sizes[2]//2), indice_key='spconv4', conv_type=self.downsample_type[2], pruning_ratio=self.downsample_pruning_ratio[2]),
+            block(channels[2], channels[3], spconv_kernel_sizes[2], norm_fn=norm_fn, stride=2, padding=int(spconv_kernel_sizes[2]//2), indice_key='spconv4', conv_type=self.downsample_type[2], pruning_ratio=self.downsample_pruning_ratio[2],loss_mode="focal_sprs"),
             SparseBasicBlock(channels[3], channels[3], norm_fn=norm_fn, indice_key='res4'),
             SparseBasicBlock(channels[3], channels[3], norm_fn=norm_fn, indice_key='res4'),
         )
@@ -203,20 +218,21 @@ class VoxelResBackBone8xVoxelNeXtSPS(nn.Module):
         """
         voxel_features, voxel_coords = batch_dict['voxel_features'], batch_dict['voxel_coords']
         batch_size = batch_dict['batch_size']
+        batch_dict['loss_box_of_pts_sprs']=0
         input_sp_tensor = spconv.SparseConvTensor(
             features=voxel_features,
             indices=voxel_coords.int(),
             spatial_shape=self.sparse_shape,
             batch_size=batch_size
         )
-        x = self.conv_input(input_sp_tensor)
+        x = self.conv_input(input_sp_tensor) # 41X1440X1440x16 33954 
 
-        x_conv1, batch_dict = self.conv1(x, batch_dict)
-        x_conv2, batch_dict = self.conv2(x_conv1, batch_dict)
-        x_conv3, batch_dict = self.conv3(x_conv2, batch_dict)
-        x_conv4, batch_dict = self.conv4(x_conv3, batch_dict)
-        x_conv5, batch_dict = self.conv5(x_conv4, batch_dict)
-        x_conv6, batch_dict = self.conv6(x_conv5, batch_dict)
+        x_conv1, batch_dict = self.conv1(x, batch_dict) # 41X1440X1440x16 33954 
+        x_conv2, batch_dict = self.conv2(x_conv1, batch_dict)# 21X720X720x32 42292
+        x_conv3, batch_dict = self.conv3(x_conv2, batch_dict)# 11X360X360x64 25474
+        x_conv4, batch_dict = self.conv4(x_conv3, batch_dict)# 6X180X180x128 10729
+        x_conv5, batch_dict = self.conv5(x_conv4, batch_dict)# 3X90X90x128 4860
+        x_conv6, batch_dict = self.conv6(x_conv5, batch_dict)# 2X45X45x128 1958
 
         x_conv5.indices[:, 1:] *= 2
         x_conv6.indices[:, 1:] *= 4
@@ -225,8 +241,8 @@ class VoxelResBackBone8xVoxelNeXtSPS(nn.Module):
 
         out = self.bev_out(x_conv4)
 
-        out = self.conv_out(out)
-        out = self.shared_conv(out)
+        out = self.conv_out(out) #180X180X128, 14105
+        out = self.shared_conv(out) #180X180X128, 14105
 
         batch_dict.update({
             'encoded_spconv_tensor': out,

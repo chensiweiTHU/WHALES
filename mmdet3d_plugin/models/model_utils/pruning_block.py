@@ -10,8 +10,8 @@ from functools import partial
 from spconv.core import ConvAlgo
 import copy
 import time
-# from pcdet.ops.roiaware_pool3d.roiaware_pool3d_utils import points_in_boxes_gpu
-# from pcdet.models.backbones_3d.focal_sparse_conv.focal_sparse_utils import FocalLoss
+from pcdet.ops.roiaware_pool3d.roiaware_pool3d_utils import points_in_boxes_gpu
+from ...models.backbones_3d.focal_sparse_conv.focal_sparse_utils import FocalLoss
 
 import cv2
 import numpy as np

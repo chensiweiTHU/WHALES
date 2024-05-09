@@ -53,7 +53,7 @@ class VoxelNeXt(Base3DDetector):
             coors_batch.append(coor_pad)
         coors_batch = torch.cat(coors_batch, dim=0)
         return voxels, num_points, coors_batch
-    def extract_pts_feat(self, pts, img_feats, img_metas):
+    def extract_pts_feat(self, pts, img_feats, img_metas,gt_boxes=None):
         """Extract features of points."""
         voxels, num_points, coors = self.voxelize(pts)
         batch_dict = dict()
@@ -62,6 +62,8 @@ class VoxelNeXt(Base3DDetector):
         batch_dict['voxel_coords'] =  coors
         batch_dict['voxel_num_points'] = num_points
         voxel_features = self.pts_voxel_encoder(batch_dict)
+        if gt_boxes!=None:
+            voxel_features['gt_boxes'] = gt_boxes
         # batch_size = coors[-1, 0] + 1
         # x = self.pts_middle_encoder(voxel_features, coors, batch_size)
         x = self.backbone_3d(voxel_features)
@@ -69,10 +71,10 @@ class VoxelNeXt(Base3DDetector):
         return x
     def extract_img_feat(self, img, img_metas):
         return None
-    def extract_feat(self, points, img, img_metas):
+    def extract_feat(self, points, img, img_metas,gt_boxes=None):
         """Extract features from images and points."""
         img_feats = self.extract_img_feat(img, img_metas)
-        pts_feats = self.extract_pts_feat(points, img_feats, img_metas)
+        pts_feats = self.extract_pts_feat(points, img_feats, img_metas,gt_boxes=gt_boxes)
         return (img_feats, pts_feats)
     def forward_train(self,
                       points=None,
@@ -109,31 +111,34 @@ class VoxelNeXt(Base3DDetector):
         Returns:
             dict: Losses of different branches.
         """
-        img_feats, pts_feats = self.extract_feat(
-            points, img=img, img_metas=img_metas)
-        batch_dict = pts_feats
         "fuse gt_bboxes_3d to BXMX9"
+        device = points[0].device
+        batch_dict = dict()
         max_box_num = max([len(bboxes) for bboxes in gt_bboxes_3d])
         box_dim = gt_bboxes_3d[0].tensor.shape[-1]
         bboxes_3d_tensor = torch.stack([
             torch.cat([b.tensor, torch.zeros(max_box_num - len(b), box_dim).to(b.tensor.device)])
             for b in gt_bboxes_3d
-        ]).to(pts_feats['voxel_features'].device)
+        ]).to(device)
         # # get first 7 dims
         # bboxes_3d_tensor = bboxes_3d_tensor[:, :, :7]
         # attach gt_labels_3d to tensor
         gt_labels_3d_tensor = torch.stack([
             torch.cat([l.float()+1, torch.zeros(max_box_num - len(l)).to(l.device)])
             for l in gt_labels_3d
-        ]).to(pts_feats['voxel_features'].device)
+        ]).to(device)
         bboxes_3d_tensor = torch.cat([bboxes_3d_tensor, gt_labels_3d_tensor.unsqueeze(-1)], dim=-1)
 
         batch_dict['gt_boxes'] = bboxes_3d_tensor
-
-
+        img_feats, pts_feats = self.extract_feat(
+            points, img=img, img_metas=img_metas,gt_boxes=bboxes_3d_tensor)
+        # batch_dict = pts_feats.update(batch_dict)
+        batch_dict.update(pts_feats)
         output_dict = self.dense_head(batch_dict) # img_feats for future use
 
         losses, loss_dict = self.dense_head.get_loss()
+        if 'loss_box_of_pts_sprs' in batch_dict.keys():
+            loss_dict['loss_box_of_pts_sprs'] = batch_dict['loss_box_of_pts_sprs']
         return loss_dict
     
     def aug_test(self):

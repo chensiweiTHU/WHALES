@@ -10,7 +10,7 @@ from functools import partial
 from spconv.core import ConvAlgo
 import copy
 import time
-# from pcdet.ops.roiaware_pool3d.roiaware_pool3d_utils import points_in_boxes_gpu
+from pcdet.ops.roiaware_pool3d.roiaware_pool3d_utils import points_in_boxes_gpu
 from ...models.backbones_3d.focal_sparse_conv.focal_sparse_utils import FocalLoss
 
 import cv2
@@ -235,9 +235,6 @@ class DynamicFocalPruningConv(spconv.SparseModule):
                 voxels_3d_batch = voxels_3d[batch_index].unsqueeze(0)
                 mask_voxels.append(mask_voxel)
                 gt_boxes = batch_dict['gt_boxes'][b, :, :7].unsqueeze(0)
-                ####
-                gt_boxes.points_in_boxes(points[0][:,:3])
-                ####
                 box_of_pts_batch = points_in_boxes_gpu(voxels_3d_batch[:, :, self.inv_idx], gt_boxes).squeeze(0)
                 box_of_pts_cls_targets.append(box_of_pts_batch>=0)
         
