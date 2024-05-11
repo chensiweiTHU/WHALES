@@ -486,6 +486,8 @@ class DynamicFocalPruningDownsample(spconv.SparseModule):
             indices_coords_out_list = []
             for b in range(x_im.batch_size):
                 batch_index = index==b
+                if torch.max(batch_index)==False:
+                    continue
                 features_out, indices_coords_out, _ = check_repeat(x_features[batch_index], x_indices[batch_index], flip_first=False)
                 # print("check before:", x_features[batch_index].shape, "check after:", features_out.shape)
                 features_out_list.append(features_out)
@@ -511,6 +513,8 @@ class DynamicFocalPruningDownsample(spconv.SparseModule):
                 index=x.indices[:, 0]
                 batch_index = index == b
                 mask_voxel = voxel_importance[batch_index]
+                if torch.max(batch_index)==False:
+                    continue
                 voxels_3d_batch = voxels_3d[batch_index].unsqueeze(0)
                 mask_voxels.append(mask_voxel)
                 gt_boxes = batch_dict['gt_boxes'][b, :, :7].unsqueeze(0)

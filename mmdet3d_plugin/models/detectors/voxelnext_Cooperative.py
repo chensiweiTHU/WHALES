@@ -138,7 +138,29 @@ class VoxelNeXtCoopertive(Base3DDetector):
         Returns:
             dict: Losses of different branches.
         """
+        batch_dict = dict()
         device = points[0].device
+        "fuse gt_bboxes_3d to BXMX9"
+        max_box_num = max([len(bboxes) for bboxes in gt_bboxes_3d])
+        box_dim = gt_bboxes_3d[0].tensor.shape[-1]
+        bboxes_3d_tensor = torch.stack([
+            torch.cat([b.tensor, torch.zeros(max_box_num - len(b), box_dim).to(b.tensor.device)])
+            for b in gt_bboxes_3d
+        ]).to(device)
+        # # get first 7 dims
+        "first filter out -1 labels in DAIR-V2X dataset by FFNet"
+        if self.dense_head.num_class>1:
+            for i,l in enumerate(gt_labels_3d):
+                gt_labels_3d[i][l == -1] = self.dense_head.num_class-1
+        else:
+            gt_bboxes_3d = [bboxes_3d_tensor[i][l != -1] for i,l in enumerate(gt_labels_3d)]
+            gt_labels_3d = [l[l != -1] for l in gt_labels_3d]
+        gt_labels_3d_tensor = torch.stack([
+            torch.cat([l.float()+1, torch.zeros(max_box_num - len(l)).to(l.device)])
+            for l in gt_labels_3d
+        ]).to(device)
+        bboxes_3d_tensor = torch.cat([bboxes_3d_tensor, gt_labels_3d_tensor.unsqueeze(-1)], dim=-1)
+        batch_dict['gt_boxes'] = bboxes_3d_tensor
         if not self.single and self.proj_first:
             "project inf points to vehicle coordinate system in raw data"
             for i in range(len(infrastructure_points)):
@@ -171,51 +193,24 @@ class VoxelNeXtCoopertive(Base3DDetector):
                     points[i] = torch.cat([points[i],infrastructure_points[i]],dim=0)
         for i,points_inf in enumerate(infrastructure_points):
             if len(points_inf) == 0:
-                points_inf = torch.zeros((1,4)).to(device)
+                points_inf = torch.tensor([[46,0,-1.5,1.3e-3]]).to(device)
                 infrastructure_points[i] = points_inf
         img_feats, voxel_feats = self.extract_feat(
             points, img=img, img_metas=img_metas)
+        voxel_feats.update(gt_boxes=bboxes_3d_tensor)
         pts_feats = self.backbone_3d(voxel_feats)
         if not self.single and not self.raw:
             img_feats_inf, voxel_feats_inf = self.extract_feat(
             infrastructure_points, img=infrastructure_img, img_metas=img_metas)
+            voxel_feats_inf.update(gt_boxes=bboxes_3d_tensor)
             pts_feats_inf = self.inf_backbone_3d(voxel_feats_inf)
             pts_feats = self.feature_fusion(pts_feats, pts_feats_inf, img_metas)
             # if self.proj_first:
             #     pts_feats = self.feature_fusion(pts_feats, pts_feats_inf, img_metas)
             # else:
             #     pts_feats = self.feature_fusion_warp(pts_feats, pts_feats_inf, img_metas)
-        batch_dict = pts_feats
-        "fuse gt_bboxes_3d to BXMX9"
-        max_box_num = max([len(bboxes) for bboxes in gt_bboxes_3d])
-        box_dim = gt_bboxes_3d[0].tensor.shape[-1]
-        bboxes_3d_tensor = torch.stack([
-            torch.cat([b.tensor, torch.zeros(max_box_num - len(b), box_dim).to(b.tensor.device)])
-            for b in gt_bboxes_3d
-        ]).to(pts_feats['voxel_features'].device)
-        # # get first 7 dims
-        # bboxes_3d_tensor = bboxes_3d_tensor[:, :, :7]
-        # attach gt_labels_3d to tensor
-        "first filter out -1 labels in DAIR-V2X dataset by FFNet"
-        # for i,l in enumerate(gt_labels_3d):
-        #     gt_labels_3d[i] = l[l != -1]
-        if self.dense_head.num_class>1:
-            for i,l in enumerate(gt_labels_3d):
-                gt_labels_3d[i][l == -1] = self.dense_head.num_class-1
-        else:
-            gt_bboxes_3d = [bboxes_3d_tensor[i][l != -1] for i,l in enumerate(gt_labels_3d)]
-            gt_labels_3d = [l[l != -1] for l in gt_labels_3d]
-        gt_labels_3d_tensor = torch.stack([
-            torch.cat([l.float()+1, torch.zeros(max_box_num - len(l)).to(l.device)])
-            for l in gt_labels_3d
-        ]).to(pts_feats['voxel_features'].device)
-        bboxes_3d_tensor = torch.cat([bboxes_3d_tensor, gt_labels_3d_tensor.unsqueeze(-1)], dim=-1)
-
-        batch_dict['gt_boxes'] = bboxes_3d_tensor
-
-
+        batch_dict.update(pts_feats)
         output_dict = self.dense_head(batch_dict) # img_feats for future use
-
         losses, loss_dict = self.dense_head.get_loss()
         return loss_dict
     
@@ -253,8 +248,8 @@ class VoxelNeXtCoopertive(Base3DDetector):
                 points_inf = points_inf[mask]
                 points_inf_feat = points_inf_feat[mask]
                 if len(points_inf) == 0:
-                    points_inf = torch.zeros((1,3)).to(device)
-                    points_inf_feat = torch.zeros((1,points_inf_feat.shape[1])).to(device)
+                    points_inf = torch.tensor([[46,0,-1.5]]).to(device)
+                    points_inf_feat = 1.3e-3*torch.ones((1,points_inf_feat.shape[1])).to(device)
                 infrastructure_points[i] = torch.cat([points_inf,points_inf_feat],dim=1)
                 if self.raw:
                     points[i] = torch.cat([points[i],infrastructure_points[i]],dim=0)
