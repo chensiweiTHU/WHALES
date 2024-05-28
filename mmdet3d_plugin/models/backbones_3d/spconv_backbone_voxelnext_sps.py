@@ -228,6 +228,22 @@ class VoxelResBackBone8xVoxelNeXtSPS(nn.Module):
         x = self.conv_input(input_sp_tensor) # 41X1440X1440x16 33954 
 
         x_conv1, batch_dict = self.conv1(x, batch_dict) # 41X1440X1440x16 33954 
+        vis_importance = True
+        if vis_importance:
+            pruning_ratio = 0.8
+            x_features = x_conv1.features
+            x_attn_predict = torch.abs(x_features).sum(1) / x_features.shape[1]
+            sigmoid = nn.Sigmoid()
+            voxel_importance = sigmoid(x_attn_predict.view(-1, 1))
+            _, indices = voxel_importance.view(-1,).sort()
+            indices_im = indices[int(voxel_importance.shape[0]*pruning_ratio):]
+            indices_nim = indices[:int(voxel_importance.shape[0]*pruning_ratio)]
+            important_coords = x_conv1.indices[indices_im][:,1:]
+            all_coords = x_conv1.indices[:,1:]
+            important_coords = important_coords.cpu().numpy()
+            all_coords = all_coords.cpu().numpy()
+            important_coords.tofile('visual/important_coords.bin')#,important_coords)
+            all_coords.tofile('visual/all_coords.bin')
         x_conv2, batch_dict = self.conv2(x_conv1, batch_dict)# 21X720X720x32 42292
         x_conv3, batch_dict = self.conv3(x_conv2, batch_dict)# 11X360X360x64 25474
         x_conv4, batch_dict = self.conv4(x_conv3, batch_dict)# 6X180X180x128 10729

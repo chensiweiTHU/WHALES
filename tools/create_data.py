@@ -44,8 +44,6 @@ def kitti_data_prep(root_path, info_prefix, version, out_dir):
         with_mask=(version == 'mask'))
 
 def dolphins_data_prep(root_path, info_prefix, version, dataset_name, out_dir, max_sweeps=10):
-
-
     info_train_path = osp.join(root_path, f'{info_prefix}_infos_train.pkl')
     info_val_path = osp.join(root_path, f'{info_prefix}_infos_val.pkl')
     # if osp.exists(info_train_path):
@@ -54,10 +52,10 @@ def dolphins_data_prep(root_path, info_prefix, version, dataset_name, out_dir, m
     dolphins_converter.create_dolphins_infos(
             root_path, info_prefix, version=version, max_sweeps=max_sweeps)
 
-    # dolphins_converter.export_2d_annotation(
-    #     root_path, info_train_path, version=version)
-    # dolphins_converter.export_2d_annotation(
-    #     root_path, info_val_path, version=version)
+    dolphins_converter.export_2d_annotation(
+        root_path, info_train_path, version=version)
+    dolphins_converter.export_2d_annotation(
+        root_path, info_val_path, version=version)
     create_groundtruth_database(dataset_name, root_path, info_prefix,f'{out_dir}/{info_prefix}_infos_train.pkl',
                                 )
 

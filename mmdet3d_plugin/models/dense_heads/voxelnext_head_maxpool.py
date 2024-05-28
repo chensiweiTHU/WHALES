@@ -5,9 +5,12 @@ from torch.nn.init import kaiming_normal_
 from ..model_utils import centernet_utils
 from ..model_utils import model_nms_utils
 from ...utils import loss_utils
+from spconv.pytorch.pool import SparseMaxPool
 import spconv.pytorch as spconv
+
 from spconv.core import ConvAlgo
 import copy
+from mmdet.models.builder import HEADS#, build_loss
 
 
 class SeparateHead(nn.Module):
@@ -48,7 +51,7 @@ class SeparateHead(nn.Module):
 
         return ret_dict
 
-
+@HEADS.register_module(force=True)
 class VoxelNeXtHeadMaxPool(nn.Module):
     def __init__(self, model_cfg, input_channels, num_class, class_names, grid_size, point_cloud_range, voxel_size,
                  predict_boxes_when_training=False):
@@ -58,19 +61,19 @@ class VoxelNeXtHeadMaxPool(nn.Module):
         self.grid_size = grid_size
         self.point_cloud_range = torch.Tensor(point_cloud_range).cuda()
         self.voxel_size = torch.Tensor(voxel_size).cuda()
-        self.feature_map_stride = self.model_cfg.TARGET_ASSIGNER_CONFIG.get('FEATURE_MAP_STRIDE', None)
+        self.feature_map_stride = self.model_cfg.target_assigner_config.get('feature_map_stride', None)
 
         self.class_names = class_names
         self.class_names_each_head = []
         self.class_id_mapping_each_head = []
-        self.gaussian_ratio = self.model_cfg.get('GAUSSIAN_RATIO', 1)
-        self.gaussian_type = self.model_cfg.get('GAUSSIAN_TYPE', ['nearst', 'gt_center'])
+        self.gaussian_ratio = self.model_cfg.get('gaussian_ratio', 1)
+        self.gaussian_type = self.model_cfg.get('gaussian_type', ['nearst', 'gt_center'])
         # The iou branch is only used for Waymo dataset
-        self.iou_branch = self.model_cfg.get('IOU_BRANCH', False)
+        self.iou_branch = self.model_cfg.get('iou_branch', False)
         if self.iou_branch:
-            self.rectifier = self.model_cfg.get('RECTIFIER', [0.68, 0.71, 0.65])
+            self.rectifier = self.model_cfg.get('rectifier', [0.68, 0.71, 0.65])
             
-        for cur_class_names in self.model_cfg.CLASS_NAMES_EACH_HEAD:
+        for cur_class_names in self.model_cfg.class_names_each_head:
             self.class_names_each_head.append([x for x in cur_class_names if x in class_names])
             cur_class_id_mapping = torch.from_numpy(np.array(
                 [self.class_names.index(x) for x in cur_class_names if x in class_names]
@@ -80,29 +83,31 @@ class VoxelNeXtHeadMaxPool(nn.Module):
         total_classes = sum([len(x) for x in self.class_names_each_head])
         assert total_classes == len(self.class_names), f'class_names_each_head={self.class_names_each_head}'
 
-        kernel_size_head = self.model_cfg.get('KERNEL_SIZE_HEAD', 3)
+        kernel_size_head = self.model_cfg.get('kernel_size_head', 3)
 
         self.heads_list = nn.ModuleList()
-        self.separate_head_cfg = self.model_cfg.SEPARATE_HEAD_CFG
+        self.separate_head_cfg = self.model_cfg.separate_head_cfg
         for idx, cur_class_names in enumerate(self.class_names_each_head):
-            cur_head_dict = copy.deepcopy(self.separate_head_cfg.HEAD_DICT)
-            cur_head_dict['hm'] = dict(out_channels=len(cur_class_names), num_conv=self.model_cfg.NUM_HM_CONV)
+            cur_head_dict = copy.deepcopy(self.separate_head_cfg.head_dict)
+            cur_head_dict['hm'] = dict(out_channels=len(cur_class_names), num_conv=self.model_cfg.num_hm_conv)
             self.heads_list.append(
                 SeparateHead(
-                    input_channels=self.model_cfg.get('SHARED_CONV_CHANNEL', 128),
+                    input_channels=self.model_cfg.get('shared_conv_channel', 128),
                     sep_head_dict=cur_head_dict,
                     kernel_size=kernel_size_head,
-                    init_bias=-2.19,
-                    use_bias=self.model_cfg.get('USE_BIAS_BEFORE_NORM', False),
+                    init_bias=-2.66,
+                    use_bias=self.model_cfg.get('use_bias_before_norm', False),
                 )
             )
         self.predict_boxes_when_training = predict_boxes_when_training
         self.forward_ret_dict = {}
         self.build_losses()
-        self.voxel_size_list = self.model_cfg.VOXEL_SIZE_EACH_HEAD
-        kernel_size_list = self.model_cfg.KERNEL_SIZE_EACH_HEAD
-        self.max_pool_list = [spconv.SparseMaxPool2d(k, 1, 1, subm=True, algo=ConvAlgo.Native, indice_key='max_pool_head%d'%i) for i, k in enumerate(kernel_size_list)]
-        self.easy_head = self.model_cfg.get('EASY_HEAD', [])
+        self.voxel_size_list = self.model_cfg.voxel_size_each_head  # VOXEL_SIZE_EACH_HEAD
+        kernel_size_list = self.model_cfg.kernel_size_each_head  # KERNEL_SIZE_EACH_HEAD
+        self.max_pool_list = [SparseMaxPool(2, k, 1, 1,  subm=True, algo=ConvAlgo.Native, indice_key='max_pool_head%d'%i) for i, k in enumerate(kernel_size_list)]
+        # self.max_pool_list = [spconv.SparseMaxPool2d(k, 1, 1, algo=ConvAlgo.Native, indice_key='max_pool_head%d'%i) for i, k in enumerate(kernel_size_list)]
+        # self.max_pool_list = [spconv.SparseMaxPool2d(k, 1, 1, subm=True, algo=ConvAlgo.Native, indice_key='max_pool_head%d'%i) for i, k in enumerate(kernel_size_list)]
+        self.easy_head = self.model_cfg.get('easy_head',[])  # ('EASY_HEAD', [])
 
     def build_losses(self):
         self.add_module('hm_loss_func', loss_utils.FocalLossSparse())
@@ -117,7 +122,8 @@ class VoxelNeXtHeadMaxPool(nn.Module):
             gt_boxes: (B, M, 8)
         Returns:
         """
-        target_assigner_cfg = self.model_cfg.TARGET_ASSIGNER_CONFIG
+        target_assigner_cfg = self.model_cfg.target_assigner_config
+
 
         batch_size = gt_boxes.shape[0]
         ret_dict = {
@@ -154,10 +160,10 @@ class VoxelNeXtHeadMaxPool(nn.Module):
                     num_classes=len(cur_class_names), gt_boxes=gt_boxes_single_head,
                     num_voxels=num_voxels[bs_idx], spatial_indices=spatial_indices[bs_idx], 
                     spatial_shape=spatial_shape, 
-                    feature_map_stride=target_assigner_cfg.FEATURE_MAP_STRIDE,
-                    num_max_objs=target_assigner_cfg.NUM_MAX_OBJS,
-                    gaussian_overlap=target_assigner_cfg.GAUSSIAN_OVERLAP,
-                    min_radius=target_assigner_cfg.MIN_RADIUS,
+                    feature_map_stride=target_assigner_cfg.feature_map_stride,
+                    num_max_objs=target_assigner_cfg.num_max_objs, #NUM_MAX_OBJS,
+                    gaussian_overlap=target_assigner_cfg.gaussian_overlap, #GAUSSIAN_OVERLAP,
+                    min_radius=target_assigner_cfg.min_radius, #MIN_RADIUS,
                 )
                 heatmap_list.append(heatmap.to(gt_boxes_single_head.device))
                 target_boxes_list.append(ret_boxes.to(gt_boxes_single_head.device))
@@ -251,25 +257,25 @@ class VoxelNeXtHeadMaxPool(nn.Module):
         batch_index = self.forward_ret_dict['batch_index']
 
         tb_dict = {}
-        loss = 0
+        loss = torch.tensor([0.], device=pred_dicts[0]['hm'].device)
         batch_indices = self.forward_ret_dict['voxel_indices'][:, 0]
         spatial_indices = self.forward_ret_dict['voxel_indices'][:, 1:]
 
         for idx, pred_dict in enumerate(pred_dicts):
             pred_dict['hm'] = self.sigmoid(pred_dict['hm'])
             hm_loss = self.hm_loss_func(pred_dict['hm'], target_dicts['heatmaps'][idx])
-            hm_loss *= self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['cls_weight']
+            hm_loss *= self.model_cfg.loss_config.loss_weights['cls_weight']
 
             target_boxes = target_dicts['target_boxes'][idx]
-            pred_boxes = torch.cat([pred_dict[head_name] for head_name in self.separate_head_cfg.HEAD_ORDER], dim=1)
+            pred_boxes = torch.cat([pred_dict[head_name] for head_name in self.separate_head_cfg.head_order], dim=1)
 
             reg_loss = self.reg_loss_func(
                 pred_boxes, target_dicts['masks'][idx], target_dicts['inds'][idx], target_boxes, batch_index
             )
-            loc_loss = (reg_loss * reg_loss.new_tensor(self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['code_weights'])).sum()
-            loc_loss = loc_loss * self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['loc_weight']
-            tb_dict['hm_loss_head_%d' % idx] = hm_loss.item()
-            tb_dict['loc_loss_head_%d' % idx] = loc_loss.item()
+            loc_loss = (reg_loss * reg_loss.new_tensor(self.model_cfg.loss_config.loss_weights['code_weights'])).sum()
+            loc_loss = loc_loss * self.model_cfg.loss_config.loss_weights['loc_weight']
+            tb_dict['hm_loss_head_%d' % idx] = hm_loss
+            tb_dict['loc_loss_head_%d' % idx] = loc_loss
             if self.iou_branch:
                 batch_box_preds = self._get_predicted_boxes(pred_dict, spatial_indices)
                 pred_boxes_for_iou = batch_box_preds.detach()
@@ -278,16 +284,16 @@ class VoxelNeXtHeadMaxPool(nn.Module):
 
                 iou_reg_loss = self.crit_iou_reg(batch_box_preds, target_dicts['masks'][idx], target_dicts['inds'][idx],
                                                     target_dicts['gt_boxes'][idx], batch_indices)
-                iou_weight = self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['iou_weight'] if 'iou_weight' in self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS else self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['loc_weight']
+                iou_weight = self.model_cfg.loss_config.loss_weights['iou_weight'] if 'iou_weight' in self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS else self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['loc_weight']
                 iou_reg_loss = iou_reg_loss * iou_weight #self.model_cfg.LOSS_CONFIG.LOSS_WEIGHTS['loc_weight']
 
                 loss += (hm_loss + loc_loss + iou_loss + iou_reg_loss)
-                tb_dict['iou_loss_head_%d' % idx] = iou_loss.item()
-                tb_dict['iou_reg_loss_head_%d' % idx] = iou_reg_loss.item()
+                tb_dict['iou_loss_head_%d' % idx] = iou_loss
+                tb_dict['iou_reg_loss_head_%d' % idx] = iou_reg_loss
             else:
                 loss += hm_loss + loc_loss
-
-        tb_dict['rpn_loss'] = loss.item()
+        loss = loss.item()
+        # tb_dict['rpn_loss'] = loss.item()
         return loss, tb_dict
 
     def _get_predicted_boxes(self, pred_dict, spatial_indices):
@@ -364,9 +370,10 @@ class VoxelNeXtHeadMaxPool(nn.Module):
     def forward_test_waymo(self, x, data_dict):
         batch_index, spatial_indices = x.indices[:, 0], x.indices[:, 1:]
 
-        K = self.model_cfg.POST_PROCESSING.MAX_OBJ_PER_SAMPLE
-        score_thresh = self.model_cfg.POST_PROCESSING.SCORE_THRESH
-        post_center_limit_range = torch.tensor(self.model_cfg.POST_PROCESSING.POST_CENTER_LIMIT_RANGE).cuda().float()
+        K = self.model_cfg.post_processing.max_obj_per_sample  # POST_PROCESSING.MAX_OBJ_PER_SAMPLE
+        score_thresh = self.model_cfg.post_processing.score_thresh  # POST_PROCESSING.SCORE_THRESH
+        post_center_limit_range = torch.tensor(self.model_cfg\
+            .post_processing.post_center_limit_range).cuda().float()  #POST_CENTER_LIMIT_RANGE).cuda().float()
         batch_size = x.batch_size
 
         ret_dict = [{
@@ -418,7 +425,10 @@ class VoxelNeXtHeadMaxPool(nn.Module):
                     spatial_shape=spatial_shape,
                     batch_size=batch_size
                 )
-                max_pool = spconv.SparseMaxPool2d(self.kernel_size_list[cls], 1, 1, subm=True, algo=ConvAlgo.Native, indice_key='max_pool')
+                max_pool = SparseMaxPool(2,self.kernel_size_list[cls], 1, 1, subm=True, algo=ConvAlgo.Native, indice_key='max_pool')
+                # max_pool = spconv.SparseMaxPool2d(self.kernel_size_list[cls], 1, 1, subm=True, algo=ConvAlgo.Native, indice_key='max_pool')
+                # max_pool = spconv.SparseMaxPool2d(self.kernel_size_list[cls], 1, 1, algo=ConvAlgo.Native, indice_key='max_pool')
+                
                 x_hm_max = max_pool(x_hm, True)
                 selected[mask_cls] += (x_hm_max.features == x_hm.features).squeeze(-1)
 
@@ -474,9 +484,10 @@ class VoxelNeXtHeadMaxPool(nn.Module):
     def forward_test(self, x, data_dict):
         batch_index, spatial_indices = x.indices[:, 0], x.indices[:, 1:]
 
-        K = self.model_cfg.POST_PROCESSING.MAX_OBJ_PER_SAMPLE
-        score_thresh = self.model_cfg.POST_PROCESSING.SCORE_THRESH
-        post_center_limit_range = torch.tensor(self.model_cfg.POST_PROCESSING.POST_CENTER_LIMIT_RANGE).cuda().float()
+        K = self.model_cfg.post_processing.max_obj_per_sample  # POST_PROCESSING.MAX_OBJ_PER_SAMPLE
+        score_thresh = self.model_cfg.post_processing.score_thresh  # POST_PROCESSING.SCORE_THRESH
+        post_center_limit_range = torch.tensor(self.model_cfg\
+            .post_processing.post_center_limit_range).cuda().float()  #POST_CENTER_LIMIT_RANGE).cuda().float()
         batch_size = x.batch_size
 
         ret_dict = [{
@@ -522,7 +533,7 @@ class VoxelNeXtHeadMaxPool(nn.Module):
                 spatial_shape=spatial_shape,
                 batch_size=batch_size * 2
             )
-            x_hm_max = max_pool(x_hm, True)
+            x_hm_max = max_pool(x_hm)#, True)
             selected = (x_hm_max.features == x_hm.features).squeeze(-1)
 
             pred_dict = head(x, skip_key=skip_key)
@@ -530,7 +541,7 @@ class VoxelNeXtHeadMaxPool(nn.Module):
             dim = pred_dict['dim']
             rot_cos = pred_dict['rot'][:, 0].unsqueeze(dim=1)
             rot_sin = pred_dict['rot'][:, 1].unsqueeze(dim=1)
-            vel = pred_dict['vel'] if 'vel' in self.separate_head_cfg.HEAD_ORDER else None
+            vel = pred_dict['vel'] if 'vel' in self.separate_head_cfg.head_order else None  # HEAD_ORDER else None
 
             if not 'center' in skip_key:
                 center = pred_dict['center']
@@ -599,6 +610,7 @@ class VoxelNeXtHeadMaxPool(nn.Module):
             target_dict = self.assign_targets(
                 data_dict['gt_boxes'], num_voxels, spatial_indices, spatial_shape
             )
+            self.forward_ret_dict['voxel_indices'] = voxel_indices
             self.forward_ret_dict['batch_index'] = batch_index
             self.forward_ret_dict['target_dicts'] = target_dict
             self.forward_ret_dict['pred_dicts'] = pred_dicts

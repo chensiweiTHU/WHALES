@@ -150,7 +150,7 @@ def _fill_trainval_infos(dolphins:Dolphins,
     l2e_r_mat = Quaternion(l2e_r).rotation_matrix
     e2g_r_mat = Quaternion(e2g_r).rotation_matrix
 
-    # obtain 6 images' information per frame
+    # obtain 4 images' information per frame
     camera_types = [
         'camera',
         'camera_b',

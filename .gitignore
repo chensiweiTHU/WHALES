@@ -137,3 +137,6 @@ mmdet3d/core/evaluation/waymo_utils/compute_detection_metrics_main
 cache/*
 *.npy
 visual/
+*.bundle
+
+configs_CooperativePerception/bevfusion_configs/*

@@ -12,9 +12,10 @@ from mmdet3d.models.dense_heads.shape_aware_head import ShapeAwareHead
 from mmdet3d.models.dense_heads.ssd_3d_head import SSD3DHead
 from mmdet3d.models.dense_heads.vote_head import VoteHead
 from .voxelnext_head import VoxelNeXtHead
+from .voxelnext_head_maxpool import VoxelNeXtHeadMaxPool
 __all__ = [
     'Anchor3DHead', 'FreeAnchor3DHead', 'PartA2RPNHead', 'VoteHead',
     'SSD3DHead', 'BaseConvBboxHead', 'CenterHead', 'ShapeAwareHead',
     'BaseMono3DDenseHead', 'AnchorFreeMono3DHead', 'FCOSMono3DHead',
-    'GroupFree3DHead', 'VoxelNeXtHead'
+    'GroupFree3DHead', 'VoxelNeXtHead', 'VoxelNeXtHeadMaxPool'
 ]

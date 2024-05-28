@@ -311,6 +311,13 @@ class DolphinsDataset(Custom3DDataset):
             lidar2img_rts = []
             img_info = {}
             for cam_type, cam_info in info['cams'].items():
+                if cam_type == 'camera_b':
+                    view_transformation_matrix = np.array([[-1,0,0,0],
+                    [0,-1,0,0],
+                    [0,0,1,0],
+                    [0,0,0,1],
+                    ])
+                elif cam_type == 'camera'
                 image_paths.append(cam_info['data_path'])
 
                 
@@ -321,6 +328,7 @@ class DolphinsDataset(Custom3DDataset):
                 lidar2cam_rt = np.eye(4)
                 lidar2cam_rt[:3, :3] = lidar2cam_r.T
                 lidar2cam_rt[3, :3] = -lidar2cam_t
+                lidar2cam_rt = view_transformation_matrix@lidar2cam_rt
                 intrinsic = cam_info['cam_intrinsic']
                 viewpad = np.eye(4)
                 viewpad[:intrinsic.shape[0], :intrinsic.shape[1]] = intrinsic
