@@ -115,8 +115,8 @@ def _fill_trainval_infos(dolphins:Dolphins,
     time_interval = 0.1 * save_interval
 
     # for sample in mmcv.track_iter_progress(dolphins.frames):
-    boxes, cam_intrinsic, annotations, vehicle_locations, vehicle_rotations = dolphins.get_sample_data(step, sample, vehicle_index, save_interval,\
-                                                                                        use_flat_vehicle_coordinates=True)
+    boxes, cam_intrinsic, annotations, vehicle_locations, vehicle_rotations = dolphins.get_sample_data(\
+        step, sample, vehicle_index, save_interval, use_flat_vehicle_coordinates=False)
     if vehicle_index< dolphins.scenen[sample]['vehicle_num']-1:
         lidar_path = osp.join(root_path, sample, str(step * save_interval), 'vehicle' + str(vehicle_index), 'point_cloud.bin')
     else:

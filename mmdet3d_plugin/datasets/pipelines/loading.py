@@ -5,8 +5,9 @@ import numpy as np
 from mmdet3d.core.points import BasePoints, get_points_type
 from mmdet.datasets.builder import PIPELINES
 from mmdet.datasets.pipelines import LoadAnnotations, LoadImageFromFile
-
-
+import cv2
+from mmdet3d.core.bbox import Box3DMode, Coord3DMode, LiDARInstance3DBoxes
+import math
 @PIPELINES.register_module(force=True)
 class LoadMultiViewImageFromFiles(object):
     """Load multi channel images from a list of separate channel files.
@@ -47,6 +48,82 @@ class LoadMultiViewImageFromFiles(object):
             [mmcv.imread(name, self.color_type) for name in filename], axis=-1)
         if self.to_float32:
             img = img.astype(np.float32)
+        visualize = False
+        if visualize:
+            #lidar2img = results['lidar2img'][0] # 4x4 matrix
+            vel_ego_to_cam = np.array([[0,-1,0,0],[0,0,-1,0],[1,0,0,0]])
+            lidar2img = results['img_info']['viewpad'] # 4x4 matrix
+            lidar2img = lidar2img[:3,:3]
+            lidar2img[0,0]=960
+            lidar2img[1,1]=960
+            boxes_3d = results['gt_bboxes_3d']
+            boxe_corners = boxes_3d.corners
+            dims = boxes_3d.dims.cpu().numpy()
+            # reshape to NX8,3
+            boxe_corners = boxe_corners.reshape(-1, 3)
+            # repeat dims
+            repeated_dims = np.repeat(dims, 8, axis=0)
+            boxe_corners[:,0] = boxe_corners[:,0]#+0.5*repeated_dims[:,0]
+            # to numpy
+            boxe_corners = boxe_corners.cpu().numpy()
+            # pad 1 to convert to homogenuous coordinates
+            boxe_corners = np.concatenate([boxe_corners, np.ones((boxe_corners.shape[0],1))], axis=1)
+            # apply transformation
+            boxe_corners_2d = np.matmul(vel_ego_to_cam, boxe_corners.T).T
+            boxe_corners_2d = np.matmul(lidar2img, boxe_corners_2d.T).T
+            # filter z<0 and divide z
+            boxe_corners_2d = boxe_corners_2d.reshape(-1, 8, 3)
+            newboxes = []
+            for box in boxe_corners_2d:
+                if (box[:,2]>0).all():
+                    # divide depth
+                    box = box/box[:,2].reshape((-1,1))
+                    newboxes.append(box)
+            boxe_corners_2d = np.asarray(newboxes)
+            # get first 2 dims
+            boxe_corners_2d = boxe_corners_2d[:,:,0:2]
+            front_img = img[..., 0]
+            front_img = np.ascontiguousarray(front_img)
+            front_img = draw_boxes(front_img, boxe_corners_2d)
+            "use a standrad box in front to test"
+            "5,0,-1.8,5,2,1.8"
+            gt_bboxes_3d = LiDARInstance3DBoxes(
+            [[2.8,0,-1.8,5,2,1.8,0],
+            #  [5,0,-1.8,5,2,1.8,0.5*math.pi],
+             [2.8,2,-1.8,5,2,1.8,0],
+            #  [5,2,-1.8,5,2,1.8,0.5*math.pi],
+             ],)
+            boxe_corners = gt_bboxes_3d.corners
+            dims = gt_bboxes_3d.dims.cpu().numpy()
+            # reshape to NX8,3
+            boxe_corners = boxe_corners.reshape(-1, 3)
+            # repeat dims
+            repeated_dims = np.repeat(dims, 8, axis=0)
+            boxe_corners[:,0] = boxe_corners[:,0]#+0.5*repeated_dims[:,0]
+            # to numpy
+            boxe_corners = boxe_corners.cpu().numpy()
+            # pad 1 to convert to homogenuous coordinates
+            boxe_corners = np.concatenate([boxe_corners, np.ones((boxe_corners.shape[0],1))], axis=1)
+            # apply transformation
+            boxe_corners_2d = np.matmul(vel_ego_to_cam, boxe_corners.T).T
+            boxe_corners_2d = np.matmul(lidar2img, boxe_corners_2d.T).T
+            # filter z<0 and divide z
+            boxe_corners_2d = boxe_corners_2d.reshape(-1, 8, 3)
+            newboxes = []
+            for box in boxe_corners_2d:
+                if (box[:,2]>0).all():
+                    # divide depth
+                    box = box/box[:,2].reshape((-1,1))
+                    newboxes.append(box)
+            boxe_corners_2d = np.asarray(newboxes)
+            # get first 2 dims
+            boxe_corners_2d = boxe_corners_2d[:,:,0:2]
+            front_img = np.ascontiguousarray(front_img)
+            front_img = draw_boxes(front_img, boxe_corners_2d,color=(0,255,255))
+            # for box in boxe_corners_2d:
+            #     front_img = cv2.circle(front_img, (int(box[0]), int(box[1])), 5, (0, 255, 0), 2)
+            cv2.imwrite('camera_front.jpg', front_img)
+            print('written')
         results['filename'] = filename
         # unravel to list, see `DefaultFormatBundle` in formating.py
         # which will transpose each image separately and then stack into array
@@ -676,3 +753,14 @@ class LoadAnnotations3D(LoadAnnotations):
         repr_str += f'{indent_str}with_bbox_depth={self.with_bbox_depth}, '
         repr_str += f'{indent_str}poly2mask={self.poly2mask})'
         return repr_str
+def draw_boxes(image, boxes, color=(0, 255, 0), thickness=1):
+    if boxes is None:
+        return image
+    for box in boxes:
+        # convert to int
+        box = box.astype(np.int32)
+        for i in range(4):
+            cv2.line(image, tuple(box[i]), tuple(box[(i + 1) % 4]), color, thickness)
+            cv2.line(image, tuple(box[i + 4]), tuple(box[(i + 1) % 4 + 4]), color, thickness)
+            cv2.line(image, tuple(box[i]), tuple(box[i + 4]), color, thickness)
+    return image

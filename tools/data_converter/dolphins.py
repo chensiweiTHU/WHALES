@@ -306,7 +306,7 @@ class Dolphins:
         k = np.identity(3)
         k[0, 2] = 1920 / 2
         k[1, 2] = 1080 / 2
-        f = 1080 / (2.0 * math.tan(90.0 * math.pi / 360.0))
+        f = 1920 / (2.0 * math.tan(90.0 * math.pi / 360.0))
         k[0, 0] = k[1, 1] = f
         cam_intrinsic = k
         
@@ -338,9 +338,24 @@ class Dolphins:
                 "turn over the y axis"
                 box.center[1] = -box.center[1]
             else:
-                # Move box to ego vehicle coord system.
-                box.translate(-np.array(vehicle_locations[vehicle_index]))
-                box.rotate(Quaternion(self.euler_to_quaternion(vehicle_rotations[vehicle_index])).inverse)
+                # Move box to ego vehicle coord system in 3D.
+                yaw=(vehicle_rotations[vehicle_index][1])*np.pi/180
+                pitch =(vehicle_rotations[vehicle_index][0])* np.pi / 180
+                roll=(vehicle_rotations[vehicle_index][2])*np.pi/180
+
+                translation = np.array([0,0,1.8])+ np.array(vehicle_locations[vehicle_index])
+                box.translate(-translation)
+                
+                vehicle_quaternion =  Quaternion(axis=[0, 1, 0], angle=pitch) * Quaternion(axis=[0, 0, 1], angle=yaw) * Quaternion(axis=[1, 0, 0], angle=roll)
+
+                box.rotate(vehicle_quaternion.inverse)
+                box.center[1]=-box.center[1]
+                # Move box to ego vehicle coord system in 3D.
+                # translation = np.array([0, 0, 1.8]) + np.array(vehicle_locations[vehicle_index])
+                # box.translate(-translation)
+                
+                # vehicle_quaternion = Quaternion(self.euler_to_quaternion(vehicle_rotations[vehicle_index]))
+                # box.rotate(vehicle_quaternion.inverse)
 
             box_list.append(box)
 
@@ -352,7 +367,8 @@ class Dolphins:
         :param sample_annotation_token: Unique sample_annotation identifier.
         """
         label = self.label_map[curr_anno['type']]
-        size = [curr_anno['size'][1], curr_anno['size'][0], curr_anno['size'][2]]
+        "warning: our original label is extent, which is 0.5*wlh"
+        size = [2 * curr_anno['size'][1], 2 * curr_anno['size'][0], 2 * curr_anno['size'][2]]
         # if curr_anno['rotation'][0] < 0:
         #     for i in range(4):
         #         curr_anno['rotation'][i] = -curr_anno['rotation'][i]

@@ -435,11 +435,12 @@ class DolphinsEval:
                                 continue
                             velocity = np.array(
                                     dolph.box_velocity(scene, interval, step, sample_annotation, time_interval)[:2]) 
+                            size = [2*sample_annotation['size'][0],2*sample_annotation['size'][1], 2*sample_annotation['size'][2]]
                             sample_boxes.append(
                                 box_cls(
                                     sample_token=sample_token,
                                     translation=sample_annotation['location'],
-                                    size=sample_annotation['size'],
+                                    size=size,
                                     rotation=sample_annotation['rotation'],
                                     velocity=velocity,
                                     num_pts=1000,

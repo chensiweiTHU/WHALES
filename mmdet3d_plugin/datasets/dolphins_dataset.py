@@ -126,6 +126,7 @@ class DolphinsDataset(Custom3DDataset):
         return eval_configs
     def __init__(self,
                  ann_file,
+                 num_views=4,
                  pipeline=None,
                  data_root=None,
                  classes=None,
@@ -162,6 +163,7 @@ class DolphinsDataset(Custom3DDataset):
         self.with_velocity = with_velocity
         self.eval_version = eval_version
         # self.img_prefix = img_prefix
+        self.num_views = num_views
         self.class_range = class_range
         self.time_delay = time_delay
         from nuscenes.eval.detection.config import config_factory
@@ -311,32 +313,49 @@ class DolphinsDataset(Custom3DDataset):
             lidar2img_rts = []
             img_info = {}
             for cam_type, cam_info in info['cams'].items():
-                if cam_type == 'camera_b':
-                    view_transformation_matrix = np.array([[-1,0,0,0],
-                    [0,-1,0,0],
-                    [0,0,1,0],
-                    [0,0,0,1],
-                    ])
-                elif cam_type == 'camera'
+                vel_ego_to_cam = np.array([[0, -1, 0, 0], 
+                    [0, 0, -1, 0], 
+                    [1, 0, 0, 0], 
+                    [0, 0, 0, 1]])
+                view_transforms = {
+                    'camera': np.eye(4),
+                    'camera_l': np.array([[ 0, 1, 0, 0], 
+                                [-1, 0, 0, 0], 
+                                [ 0, 0, 1, 0], 
+                                [ 0, 0, 0, 1]]),
+                    'camera_b': np.array([[-1, 0, 0, 0], 
+                                        [ 0, -1, 0, 0], 
+                                        [ 0, 0, 1, 0], 
+                                        [ 0, 0, 0, 1]]),
+                    'camera_r': np.array([[ 0, -1, 0, 0], 
+                                        [ 1, 0, 0, 0], 
+                                        [ 0, 0, 1, 0], 
+                                        [ 0, 0, 0, 1]])
+                }
                 image_paths.append(cam_info['data_path'])
+                lidar2cam_rt = vel_ego_to_cam
 
+                if cam_type != 'camera':
+                    lidar2cam_rt = view_transforms[cam_type] @ lidar2cam_rt
                 
                 # obtain lidar to image transformation matrix
-                lidar2cam_r = np.linalg.inv(cam_info['sensor2lidar_rotation'])
-                lidar2cam_t = cam_info[
-                    'sensor2lidar_translation'] @ lidar2cam_r.T
-                lidar2cam_rt = np.eye(4)
-                lidar2cam_rt[:3, :3] = lidar2cam_r.T
-                lidar2cam_rt[3, :3] = -lidar2cam_t
-                lidar2cam_rt = view_transformation_matrix@lidar2cam_rt
+                # lidar2cam_r = np.linalg.inv(cam_info['sensor2lidar_rotation'])
+                # lidar2cam_t = cam_info[
+                #     'sensor2lidar_translation'] @ lidar2cam_r.T
+                # lidar2cam_rt = np.eye(4)
+                # lidar2cam_rt[:3, :3] = lidar2cam_r.T
+                # lidar2cam_rt[3, :3] = -lidar2cam_t
+                # lidar2cam_rt = view_transformation_matrix@lidar2cam_rt
                 intrinsic = cam_info['cam_intrinsic']
                 viewpad = np.eye(4)
                 viewpad[:intrinsic.shape[0], :intrinsic.shape[1]] = intrinsic
-                lidar2img_rt = (viewpad @ lidar2cam_rt.T)
+                lidar2img_rt = viewpad @ lidar2cam_rt
                 lidar2img_rts.append(lidar2img_rt)
 
             img_info = {
                 'filename': image_paths,
+                'intrinsic':intrinsic,
+                'viewpad': viewpad,
             }
 
             input_dict.update(
