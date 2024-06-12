@@ -6,7 +6,7 @@ from mmdet3d.datasets.custom_3d_seg import Custom3DSegDataset
 from mmdet3d.datasets.kitti_dataset import KittiDataset
 from mmdet3d.datasets.kitti_mono_dataset import KittiMonoDataset
 from mmdet3d.datasets.lyft_dataset import LyftDataset
-from .dolphins_dataset import DolphinsDataset
+from .whales_dataset import WhalesDataset
 from .opencood_dataset import OpencoodDataset
 from mmdet3d.datasets.nuscenes_mono_dataset import NuScenesMonoDataset
 # yapf: disable
@@ -29,7 +29,7 @@ from mmdet3d.datasets.waymo_dataset import WaymoDataset
 
 __all__ = [
     'KittiDataset', 'KittiMonoDataset', 'build_dataloader', 'DATASETS',
-    'build_dataset', 'NuScenesDataset', 'NuScenesMonoDataset', 'LyftDataset', 'DolphinsDataset',
+    'build_dataset', 'NuScenesDataset', 'NuScenesMonoDataset', 'LyftDataset', 'WhalesDataset',
     'ObjectSample', 'RandomFlip3D', 'ObjectNoise', 'GlobalRotScaleTrans',
     'PointShuffle', 'ObjectRangeFilter', 'PointsRangeFilter',
     'LoadPointsFromFile', 'S3DISSegDataset', 'S3DISDataset',

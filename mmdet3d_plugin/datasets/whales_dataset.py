@@ -18,7 +18,7 @@ from .pipelines import Compose
 
 
 @DATASETS.register_module(force=True)
-class DolphinsDataset(Custom3DDataset):
+class WhalesDataset(Custom3DDataset):
     """Modified from NuScenes Dataset. We use similar ways to evaluate the results.
     <https://www.nuscenes.org/`_
     """
@@ -423,7 +423,7 @@ class DolphinsDataset(Custom3DDataset):
                                              self.eval_version)
             for i, box in enumerate(boxes):
                 name = mapped_class_names[box.label]
-                "we don't have attr in dolphins dataset"
+                "we don't have attr in whales dataset"
                 # if np.sqrt(box.velocity[0]**2 + box.velocity[1]**2) > 0.2:
                 #     if name in [
                 #             'car',
@@ -487,20 +487,20 @@ class DolphinsDataset(Custom3DDataset):
         """
         # from nuscenes import NuScenes
         from nuscenes.eval.detection.evaluate import NuScenesEval
-        from mmdet3d.datasets.dolphins_eval import DolphinsEval
-        from tools.data_converter.dolphins import Dolphins
+        from mmdet3d.datasets.whales_eval import WhalesEval
+        from tools.data_converter.whales import Whales
 
         output_dir = osp.join(*osp.split(result_path)[:-1])
-        dolphins = Dolphins(
+        whales = Whales(
             version=self.version, dataroot=self.data_root, verbose=False,train_test='test')
         eval_set_map = {
             'v1.0-mini': 'mini_val',
             'v1.0-trainval': 'val',
             "":"val",
         }
-        dolphins_eval = DolphinsEval(
-            dolphins=dolphins,
-            dolphins_dataset=self,
+        whales_eval = WhalesEval(
+            whales=whales,
+            whales_dataset=self,
             config=self.eval_detection_configs,
             result_path=result_path,
             eval_set=eval_set_map[self.version],
@@ -509,7 +509,7 @@ class DolphinsDataset(Custom3DDataset):
             verbose=False)
         
 
-        dolphins_eval.main(render_curves=False)
+        whales_eval.main(render_curves=False)
 
         # record metrics
         metrics = mmcv.load(osp.join(output_dir, 'metrics_summary.json'))

@@ -1,6 +1,6 @@
 _base_ = [
-    '../_base_/models/hv_pointpillars_fpn_dolphins.py',
-    '../_base_/datasets/dolphins-3d.py',
+    '../_base_/models/hv_pointpillars_fpn_whales.py',
+    '../_base_/datasets/whales-3d.py',
     '../_base_/schedules/schedule_2x.py',
     '../_base_/default_runtime.py',
 ]
@@ -53,9 +53,9 @@ point_cloud_range = [-50, -50, -5, 50, 50, 3]
 class_names = [
     'Vehicle', 'Pedestrian', 'Cyclist'
 ]
-dataset_type = 'DolphinsDataset'
-data_root = 'data/dolphins-new/'
-# Input modality for Dolphins2 dataset, this is consistent with the submission
+dataset_type = 'WhalesDataset'
+data_root = 'data/whales/'
+# Input modality for Whales dataset, this is consistent with the submission
 # format which requires the information in input_modality.
 input_modality = dict(
     use_lidar=True,
@@ -169,7 +169,7 @@ data = dict(
     train=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + 'dolphins_infos_train.pkl',
+        ann_file=data_root + 'whales_infos_train.pkl',
         pipeline=train_pipeline,
         classes=class_names,
         modality=input_modality,
@@ -180,7 +180,7 @@ data = dict(
     val=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + 'dolphins_infos_val.pkl',
+        ann_file=data_root + 'whales_infos_val.pkl',
         pipeline=test_pipeline,
         classes=class_names,
         modality=input_modality,
@@ -189,7 +189,7 @@ data = dict(
     test=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + 'dolphins_infos_val.pkl',
+        ann_file=data_root + 'whales_infos_val.pkl',
         pipeline=test_pipeline,
         classes=class_names,
         modality=input_modality,

@@ -1,11 +1,11 @@
 _base_ = [
-    '../_base_/models/hv_second_secfpn_dolphins.py',
-    '../_base_/datasets/dolphins-3d.py',
+    '../_base_/models/hv_second_secfpn_whales.py',
+    '../_base_/datasets/whales-3d.py',
     '../_base_/schedules/cyclic_24e.py', 
     '../_base_/default_runtime.py'
 ]
-dataset_type = 'DolphinsDataset'
-data_root = 'data/dolphins-new/'
+dataset_type = 'WhalesDataset'
+data_root = 'data/whales/'
 input_modality = dict(
     use_lidar=True,
     use_camera=False,
@@ -100,7 +100,7 @@ data = dict(
     train=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + 'dolphins_infos_train.pkl',
+        ann_file=data_root + 'whales_infos_train.pkl',
         pipeline=train_pipeline,
         classes=class_names,
         modality=input_modality,
@@ -116,7 +116,7 @@ data = dict(
     val=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + 'dolphins_infos_val.pkl',
+        ann_file=data_root + 'whales_infos_val.pkl',
         pipeline=test_pipeline,
         classes=class_names,
         modality=input_modality,
@@ -130,7 +130,7 @@ data = dict(
     test=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + 'dolphins_infos_val.pkl',
+        ann_file=data_root + 'whales_infos_val.pkl',
         pipeline=test_pipeline,
         classes=class_names,
         modality=input_modality,

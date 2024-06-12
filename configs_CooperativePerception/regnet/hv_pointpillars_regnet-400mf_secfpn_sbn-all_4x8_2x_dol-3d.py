@@ -1,8 +1,8 @@
 # _base_ = './hv_pointpillars_regnet-400mf_fpn_sbn-all_4x8_2x_dol-3d.py'
 # model settings
 _base_ = [
-    '../_base_/models/hv_pointpillars_fpn_dolphins.py',
-    '../_base_/datasets/dolphins-3d.py',
+    '../_base_/models/hv_pointpillars_fpn_whales.py',
+    '../_base_/datasets/whales-3d.py',
     '../_base_/schedules/schedule_2x.py',
     '../_base_/default_runtime.py',
 ]

@@ -171,17 +171,17 @@ class DetectionBox(EvalBox):
                    detection_name=content['detection_name'],
                    detection_score=-1.0 if 'detection_score' not in content else float(content['detection_score']),
                    attribute_name=content['attribute_name'])
-from mmdet3d.datasets import DolphinsDataset
-from tools.data_converter.dolphins import Dolphins
-class DolphinsEval:
+from mmdet3d.datasets import WhalesDataset
+from tools.data_converter.whales import Whales
+class WhalesEval:
     """
     We calculate mAP and NDS similar to the nuScenes, but we do not have attributes.
     So we set mAAE to 1 for all samples. Communication cost is calculated in addition for cooperative perception.
     Please see https://www.nuscenes.org/object-detection for more details.
     """
     def __init__(self,
-                 dolphins: Dolphins,
-                 dolphins_dataset: DolphinsDataset,
+                 whales: Whales,
+                 whales_dataset: WhalesDataset,
                  config: DetectionConfig,
                  result_path: str,
                  eval_set: str,
@@ -196,8 +196,8 @@ class DolphinsEval:
         :param output_dir: Folder to save plots and results to.
         :param verbose: Whether to print to stdout.
         """
-        self.dophins = dolphins
-        self.dataset = dolphins_dataset
+        self.dophins = whales
+        self.dataset = whales_dataset
         self.result_path = result_path
         self.eval_set = eval_set
         self.output_dir = output_dir
@@ -229,8 +229,8 @@ class DolphinsEval:
 
         # Add center distances.
         # centerpoint =True
-        self.pred_boxes = self.add_center_dist(dolphins, self.pred_boxes)#,not centerpoint)
-        self.gt_boxes = self.add_center_dist(dolphins, self.gt_boxes)
+        self.pred_boxes = self.add_center_dist(whales, self.pred_boxes)#,not centerpoint)
+        self.gt_boxes = self.add_center_dist(whales, self.gt_boxes)
         valuate = True
         if valuate:
             P_num = 0
@@ -254,14 +254,14 @@ class DolphinsEval:
         # Filter boxes (distance, points per box, etc.).
         if verbose:
             print('Filtering predictions')
-        self.pred_boxes = filter_eval_boxes(dolphins, self.pred_boxes, self.cfg.class_range, verbose=verbose)
+        self.pred_boxes = filter_eval_boxes(whales, self.pred_boxes, self.cfg.class_range, verbose=verbose)
         if verbose:
             print('Filtering ground truth annotations')
-        self.gt_boxes = filter_eval_boxes(dolphins, self.gt_boxes, self.cfg.class_range, verbose=verbose)
+        self.gt_boxes = filter_eval_boxes(whales, self.gt_boxes, self.cfg.class_range, verbose=verbose)
 
         self.sample_tokens = self.gt_boxes.sample_tokens
 
-    def add_center_dist(self, dolphins: Dolphins,
+    def add_center_dist(self, whales: Whales,
                         eval_boxes: EvalBoxes, mode="pointpillars"):
         """
         Adds the cylindrical (xy) center distance from ego vehicle to each box.
@@ -270,10 +270,10 @@ class DolphinsEval:
         :return: eval_boxes augmented with center distances.
         """
         for sample_token in eval_boxes.sample_tokens:
-            sample = dolphins.sample[dolphins._token2ind['sample'][sample_token]]
-            # dolphins.get('sample', sample_token)
-            # sd_record = dolphins.get('sample_data', sample_rec['data']['LIDAR_TOP'])
-            # pose_record = dolphins.get('ego_pose', sd_record['ego_pose_token'])
+            sample = whales.sample[whales._token2ind['sample'][sample_token]]
+            # whales.get('sample', sample_token)
+            # sd_record = whales.get('sample_data', sample_rec['data']['LIDAR_TOP'])
+            # pose_record = whales.get('ego_pose', sd_record['ego_pose_token'])
 
             for box in eval_boxes[sample_token]:
                 # Both boxes and ego pose are given in global coord system, so distance can be calculated directly.
@@ -344,7 +344,7 @@ class DolphinsEval:
 
         return all_results, meta
 
-    def load_gt(self, dolph: Dolphins, eval_split: str, box_cls,  verbose: bool = False) -> EvalBoxes:
+    def load_gt(self, dolph: Whales, eval_split: str, box_cls,  verbose: bool = False) -> EvalBoxes:
         """
         Loads ground truth boxes from DB.
         :param nusc: A NuScenes instance.
