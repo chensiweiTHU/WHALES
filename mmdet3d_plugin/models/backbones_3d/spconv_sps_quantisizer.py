@@ -6,17 +6,17 @@ from mmdet3d.models.builder import BACKBONES
 import numpy as np
 from ...utils.spconv_utils import replace_feature, spconv
 from ...models.model_utils.pruning_block import DynamicFocalPruningDownsample
-from .spconv_backbone_voxelnext2d_sps import SparseSequentialBatchdict,PostActBlock,\
+from .spconv_backbone_voxelnext_sps import SparseSequentialBatchdict,PostActBlock,\
     SparseBasicBlock
 "we use sparse pruning to choose important points"
 
 
 @BACKBONES.register_module()
-class VoxelResBackBone8xVoxelNeXtSPS(nn.Module):
+class VoxelResSPSQuantiseizer(nn.Module):
     downsample_type = ["dynamicdownsample_attn", "dynamicdownsample_attn", "dynamicdownsample_attn", "spconv", "spconv"]
     downsample_pruning_ratio = [0.5,]
     def __init__(self, input_channels, grid_size, spconv_kernel_sizes=[3], \
-                 channels=[16], out_channel=128, **kwargs):
+                 channels=[16], **kwargs):
         super().__init__()
         # self.model_cfg = model_cfg
         norm_fn = partial(nn.BatchNorm1d, eps=1e-3, momentum=0.01)
@@ -43,15 +43,17 @@ class VoxelResBackBone8xVoxelNeXtSPS(nn.Module):
         #     # SparseBasicBlock(channels[1], channels[1], norm_fn=norm_fn, indice_key='res2'),
         # )
 
-        self.num_point_features = out_channel
         self.backbone_channels = {
             'x_conv1': channels[0],
-            'x_conv2': channels[1],
-            'x_conv3': channels[2],
-            'x_conv4': channels[3]
+            # 'x_conv2': channels[1],
+            # 'x_conv3': channels[2],
+            # 'x_conv4': channels[3]
         }
         self.forward_ret_dict = {}
+        self.backbone_model = None
 
+    def bound_backbone(self,backbone):
+        self.backbone_model = backbone
 
     def forward(self, batch_dict):
         """
@@ -73,24 +75,31 @@ class VoxelResBackBone8xVoxelNeXtSPS(nn.Module):
             spatial_shape=self.sparse_shape,
             batch_size=batch_size
         )
-        x = self.conv_input(input_sp_tensor) # 41X1440X1440x16 33954 
-
-        x_conv1, batch_dict = self.conv1(x, batch_dict) # 41X1440X1440x16 33954 
-        vis_importance = True
+        if self.backbone_model is None:
+            x = self.conv_input(input_sp_tensor) # 41X1440X1440x16 33954 
+            x_conv1, batch_dict = self.conv1(x, batch_dict) # 41X1440X1440x16 33954 
+            pruning_ratio = self.downsample_pruning_ratio[0]
+        else:
+            x = self.backbone_model.conv_input(input_sp_tensor) # 41X1440X1440x16 33954
+            x_conv1, batch_dict = self.backbone_model.conv1(x, batch_dict) # 41X1440X1440x16 33954
+            pruning_ratio = self.backbone_model.downsample_pruning_ratio[0]
+        x_features = x_conv1.features
+        x_attn_predict = torch.abs(x_features).sum(1) / x_features.shape[1]
+        sigmoid = nn.Sigmoid()
+        voxel_importance = sigmoid(x_attn_predict.view(-1, 1))
+        _, indices = voxel_importance.view(-1,).sort()
+        indices_im = indices[int(voxel_importance.shape[0]*pruning_ratio):]
+        indices_nim = indices[:int(voxel_importance.shape[0]*pruning_ratio)]
+        important_coords = x_conv1.indices[indices_im]#[:,1:] keep batch index
+        unimportant_coords = x_conv1.indices[indices_nim]#[:,1:]
+        important_voxels = batch_dict['voxels'][indices_im]
+        unimportant_voxels = batch_dict['voxels'][indices_nim]
+        vis_importance = False
         if vis_importance:
-            pruning_ratio = 0.8
-            x_features = x_conv1.features
-            x_attn_predict = torch.abs(x_features).sum(1) / x_features.shape[1]
-            sigmoid = nn.Sigmoid()
-            voxel_importance = sigmoid(x_attn_predict.view(-1, 1))
-            _, indices = voxel_importance.view(-1,).sort()
-            indices_im = indices[int(voxel_importance.shape[0]*pruning_ratio):]
-            indices_nim = indices[:int(voxel_importance.shape[0]*pruning_ratio)]
-            important_coords = x_conv1.indices[indices_im][:,1:]
             all_coords = x_conv1.indices[:,1:]
             important_coords = important_coords.cpu().numpy()
             all_coords = all_coords.cpu().numpy()
             important_coords.tofile('visual/important_coords.bin')#,important_coords)
             all_coords.tofile('visual/all_coords.bin')
         
-        return batch_dict
+        return important_coords, unimportant_coords,important_voxels,unimportant_voxels, batch_dict

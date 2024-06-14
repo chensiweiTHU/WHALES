@@ -228,7 +228,7 @@ class VoxelResBackBone8xVoxelNeXtSPS(nn.Module):
         x = self.conv_input(input_sp_tensor) # 41X1440X1440x16 33954 
 
         x_conv1, batch_dict = self.conv1(x, batch_dict) # 41X1440X1440x16 33954 
-        vis_importance = True
+        vis_importance = False
         if vis_importance:
             pruning_ratio = 0.8
             x_features = x_conv1.features

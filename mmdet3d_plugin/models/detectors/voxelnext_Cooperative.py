@@ -212,6 +212,8 @@ class VoxelNeXtCoopertive(Base3DDetector):
         batch_dict.update(pts_feats)
         output_dict = self.dense_head(batch_dict) # img_feats for future use
         losses, loss_dict = self.dense_head.get_loss()
+        if 'loss_box_of_pts_sprs' in batch_dict.keys():
+            loss_dict['loss_box_of_pts_sprs'] = batch_dict['loss_box_of_pts_sprs']
         return loss_dict
     
     def aug_test(self):

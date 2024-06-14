@@ -5,7 +5,7 @@ data_root = './data/DAIR-V2X-C/cooperative-vehicle-infrastructure/'
 data_info_train_path = './data_process/dairv2x/flow_data_jsons/flow_data_info_train.json'
 data_info_val_path = './data_process/dairv2x/flow_data_jsons/flow_data_info_val_0.json'
 # work_dir = './ffnet_work_dir/work_dir_baseline'
-
+find_unused_parameters=True
 class_names = ['Car', 'others']
 point_cloud_range = [0, -46.08, -3, 92.16, 46.08, 1]
 voxel_size = [0.04, 0.04, 0.0625]
@@ -22,7 +22,7 @@ num_point_features=4
 grid_size = [2304, 2304, 64]
 
 model = dict(
-    type='VoxelNeXtCoopertive',
+    type='VoxelNeXtCoopertivePruning',
     pts_voxel_layer=dict(
         max_num_points=1,
         point_cloud_range=point_cloud_range,
@@ -101,6 +101,14 @@ model = dict(
         voxel_size=voxel_size[:2],
         code_size=9),
     ),
+    pruning = dict(
+        type = 'VoxelResSPSQuantiseizer',
+        channels=[16],
+        
+        input_channels = num_point_features,
+        grid_size = grid_size,
+        spconv_kernel_sizes=[3], 
+        ),
     post_processing=dict(
         recall_thresh_list=[0.3, 0.5, 0.7],
         eval_metric='kitti'
@@ -349,6 +357,6 @@ log_config = dict(
            dict(type='TensorboardLoggerHook')])
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-load_from = None
+load_from = "work_dirs/cooperative_voxel_next_quantisize_004_004_0062/epoch_22.pth"
 resume_from = None
 workflow = [('train', 1)]
