@@ -48,7 +48,7 @@ class VoxelNeXtCoopertivePruning(VoxelNeXtCoopertive):
                   backbone_3d, fusion_channels, dense_head, post_processing, single=single,proj_first=proj_first,raw=raw, **kwargs)
         if pruning is not None:
             self.pruning = builder.build_backbone(pruning) # we put the pruning block in the backbone
-        self.pruning.bound_backbone(self.inf_backbone_3d)
+        # self.pruning.bound_backbone(self.inf_backbone_3d)
         self.quant_levels = quant_levels
         self.point_cloud_range = pts_voxel_layer.point_cloud_range
         self.pointQuantization = []
@@ -163,6 +163,7 @@ class VoxelNeXtCoopertivePruning(VoxelNeXtCoopertive):
             
             #######use pruning to choose important points#########
             "we use pruning to choose important points"
+            voxel_feats_inf.update(gt_boxes=bboxes_3d_tensor)
             important_coords, unimportant_coords,important_voxels, unimportant_voxels, voxel_feats_inf = self.pruning(voxel_feats_inf)
             # "from coords to points"
             # pcd_range = torch.tensor(self.pts_voxel_layer.point_cloud_range).to(device)
@@ -199,9 +200,11 @@ class VoxelNeXtCoopertivePruning(VoxelNeXtCoopertive):
             # for b_id in range(len(important_points_inf)):
             #     important_points_inf[b_id] = torch.cat([important_points_inf[b_id],unimportant_points_inf[b_id]],dim=0)
             # points_inf = important_points_inf
+            loss_box_of_pts_sprs = voxel_feats_inf['loss_box_of_pts_sprs']
             img_feats_inf, voxel_feats_inf = self.extract_feat(
             compressed_points_inf, img=infrastructure_img, img_metas=img_metas)
             voxel_feats_inf.update(gt_boxes=bboxes_3d_tensor)
+            voxel_feats_inf.update(loss_box_of_pts_sprs_pruning=loss_box_of_pts_sprs)
             #######use pruning to choose important points#########
             pts_feats_inf = self.inf_backbone_3d(voxel_feats_inf)
             pts_feats = self.feature_fusion(pts_feats, pts_feats_inf, img_metas)
@@ -214,6 +217,7 @@ class VoxelNeXtCoopertivePruning(VoxelNeXtCoopertive):
         losses, loss_dict = self.dense_head.get_loss()
         if 'loss_box_of_pts_sprs' in batch_dict.keys():
             loss_dict['loss_box_of_pts_sprs'] = batch_dict['loss_box_of_pts_sprs']
+            loss_dict['loss_box_of_pts_sprs_pruning'] = loss_box_of_pts_sprs
         return loss_dict
     
     def simple_test(self,points=None,img_metas=None,img=None,infrastructure_points=None,infrastructure_img=None,**kwargs):

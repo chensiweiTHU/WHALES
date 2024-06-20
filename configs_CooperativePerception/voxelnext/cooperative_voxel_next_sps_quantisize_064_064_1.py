@@ -39,6 +39,7 @@ model = dict(
         spconv_kernel_sizes=[3,3], 
         channels=[16,32], 
         point_cloud_range=[-3, -46.08, 0, 1, 46.08, 92.16],
+        downsample_pruning_ratio = [0.8,],
     ),
     backbone_3d=dict(
         type='VoxelResBackBone8xVoxelNeXtSPS',
@@ -107,6 +108,7 @@ model = dict(
         voxel_size=voxel_size[:2],
         code_size=9),
     ),
+    quant_levels=[[0.04, 0.04, 0.0625],[0.64, 0.64, 1]],
     # pruning = dict(
     #     type = 'VoxelResSPSQuantiseizer',
     #     channels=[32],

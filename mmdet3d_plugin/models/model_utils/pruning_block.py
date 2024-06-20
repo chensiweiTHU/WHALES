@@ -377,7 +377,7 @@ class DynamicFocalPruningDownsample(spconv.SparseModule):
                  voxel_stride=1,
                  point_cloud_range=[-3, -40, 0, 1, 40, 70.4],
                  voxel_size=[0.1, 0.05, 0.05],
-                 pred_mode="attn_pred",
+                 pred_mode="learnable",
                  pred_kernel_size=None,
                  loss_mode=None,
                  algo=ConvAlgo.Native,
@@ -502,7 +502,10 @@ class DynamicFocalPruningDownsample(spconv.SparseModule):
 
     def calulate_focal_loss(self, x, voxel_importance, batch_dict, voxel_stride):
         spatial_indices = x.indices[:, 1:] * voxel_stride
-        voxels_3d = spatial_indices * self.voxel_size + self.point_cloud_range[:3]
+        spatial_shape = torch.tensor(x.spatial_shape,device=x.features.device).float()
+        spatial_shape[0] = spatial_shape[0] - 1 # we added 1 before
+        voxel_size = (self.point_cloud_range[3:] - self.point_cloud_range[:3])/spatial_shape
+        voxels_3d = spatial_indices * voxel_size + self.point_cloud_range[:3]
         # print("voxel_stride:", voxel_stride, "point_cloud_range:", self.point_cloud_range, "voxel_size:", self.voxel_size)
         batch_size = x.batch_size
         mask_voxels = []
@@ -587,8 +590,10 @@ class DynamicFocalPruningDownsample(spconv.SparseModule):
             batch_dict['l1_loss'] += l1_loss
         
         if self.training and (self.loss_mode == "focal_sprs" or self.loss_mode == "focal_all"):
-            loss_box_of_pts = self.calulate_focal_loss(x, voxel_importance, batch_dict, self.voxel_stride//2)
+            # loss_box_of_pts = self.calulate_focal_loss(x, voxel_importance, batch_dict, self.voxel_stride//2)
+            # 不知道为什么原作者要除以2
+            loss_box_of_pts = self.calulate_focal_loss(x, voxel_importance, batch_dict, self.voxel_stride)
             # print("loss_box_of_pts:", loss_box_of_pts)
             batch_dict['loss_box_of_pts_sprs'] += loss_box_of_pts
-        
+        batch_dict['voxel_importance'] = voxel_importance
         return out, batch_dict
