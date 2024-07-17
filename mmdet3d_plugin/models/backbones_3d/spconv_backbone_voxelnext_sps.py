@@ -247,7 +247,7 @@ class VoxelResBackBone8xVoxelNeXtSPS(nn.Module):
             all_coords = x_conv1.indices[:,1:]
             important_coords = important_coords.cpu().numpy()
             all_coords = all_coords.cpu().numpy()
-            important_coords.tofile('visual/important_coords.bin')#,important_coords)
+            important_coords.tofile('visual/important_coords.bin')#,important_coords
             all_coords.tofile('visual/all_coords.bin')
         x_conv2, batch_dict = self.conv2(x_conv1, batch_dict)# 21X720X720x32 42292
         x_conv3, batch_dict = self.conv3(x_conv2, batch_dict)# 11X360X360x64 25474

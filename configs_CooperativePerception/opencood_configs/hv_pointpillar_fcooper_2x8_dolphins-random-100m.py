@@ -242,7 +242,7 @@ data = dict(
                 }))
 model = dict(
     type='FCooper',
-    hypes_yaml='configs_CooperativePerception/opencood_configs/point_pillar_fcooper.yaml',
+    hypes_yaml='configs_CooperativePerception/opencood_configs/point_pillar_fcooper-100m.yaml',
     # pts_voxel_layer=dict(
     #     max_num_points=64,
     #     point_cloud_range=[-50, -50, -5, 50, 50, 3],
@@ -260,7 +260,7 @@ model = dict(
             ranges=[[-99.2, -99.2, -1.8, 99.2, 99.2, -1.4],
                     [-99.2, -99.2, -1.7, 99.2, 99.2, -1.3],
                     [-99.2, -99.2, -2, 99.2, 99.2, -1.6]],
-            sizes=[[2.5, 1.1, 0.9], [0.3, 0.3, 0.9], [1.05, 0.4, 0.8]],
+            sizes=[[5, 2.2, 1.8], [0.6, 0.6, 1.8], [2.1, 0.8, 1.6]],
             custom_values=[0, 0],
             rotations=[0, 1.57],
             reshape_out=True),

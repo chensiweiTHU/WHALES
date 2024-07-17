@@ -1,4 +1,4 @@
-point_cloud_range = [-50, -50, -5, 50, 50, 3]
+point_cloud_range = [-100, -100, -5, 100, 100, 3]
 _base_ = [
     # '../_base_/models/hv_pointpillars_fpn_dolphins.py',
     '../_base_/datasets/dolphins-3d.py',
@@ -100,9 +100,9 @@ test_pipeline = [
         use_dim=4,
         file_client_args=file_client_args),
     dict(type='AgentScheduling',
-        mode="full_communication", 
-        #submode="closest", 
-        #basic_data_limit=6e6
+        mode="unicast", 
+        submode="closest", 
+        basic_data_limit=6e6
         ),
     dict(
         type='LoadPointsFromCooperativeAgents',
@@ -127,7 +127,7 @@ test_pipeline = [
                 rot_range=[0, 0],
                 scale_ratio_range=[1., 1.],
                 translation_std=[0, 0, 0]),
-            dict(type='RandomFlip3D'),
+            # dict(type='RandomFlip3D'),
             dict(
                 type='PointsRangeFilterCP', point_cloud_range=point_cloud_range),
             dict(
@@ -194,8 +194,8 @@ eval_pipeline = [
 ]
 # model settings
 data = dict(
-    samples_per_gpu=1,
-    workers_per_gpu=1, #调试时用0
+    samples_per_gpu=2,
+    workers_per_gpu=2, #调试时用0
     train=dict(
         type=dataset_type,
         data_root=data_root,
@@ -226,8 +226,8 @@ data = dict(
         test_mode=True,
         box_type_3d='LiDAR'))
 model = dict(
-    type='FCooper',
-    hypes_yaml='configs_CooperativePerception/opencood_configs/point_pillar_fcooper.yaml',
+    type='V2VNet',
+    hypes_yaml='configs_CooperativePerception/opencood_configs/point_pillar_v2vnet-100m.yaml',
     # pts_voxel_layer=dict(
     #     max_num_points=64,
     #     point_cloud_range=[-50, -50, -5, 50, 50, 3],
@@ -242,9 +242,9 @@ model = dict(
         use_direction_classifier=True,
         anchor_generator=dict(
             type='AlignedAnchor3DRangeGenerator',
-            ranges=[[-49.6, -49.6, -1.8, 49.6, 49.6, -1.4],
-                    [-49.6, -49.6, -1.7, 49.6, 49.6, -1.3],
-                    [-49.6, -49.6, -2, 49.6, 49.6, -1.6]],
+            ranges=[[-99.2, -99.2, -1.8, 99.2, 99.2, -1.4],
+                    [-99.2, -99.2, -1.7, 99.2, 99.2, -1.3],
+                    [-99.2, -99.2, -2, 99.2, 99.2, -1.6]],
             sizes=[[5, 2.2, 1.8], [0.6, 0.6, 1.8], [2.1, 0.8, 1.6]],
             custom_values=[0, 0],
             rotations=[0, 1.57],
@@ -295,4 +295,4 @@ log_config = dict(
     ])
 runner = dict(type='EpochBasedRunner', max_epochs=24,)
 evaluation = dict(interval=24, pipeline=eval_pipeline)
-optimizer = dict(type='AdamW', lr=1e-3, weight_decay=0.01)
+optimizer = dict(type='AdamW', lr=5e-5, weight_decay=0.01)

@@ -1,4 +1,5 @@
-point_cloud_range = [-50, -50, -5, 50, 50, 3]
+point_cloud_range = [-100, -100, -5, 100, 100, 3]
+point_range = [-112, -112, -5, 112, 112, 3]
 _base_ = [
     # '../_base_/models/hv_pointpillars_fpn_dolphins.py',
     '../_base_/datasets/dolphins-3d.py',
@@ -54,8 +55,8 @@ train_pipeline = [
         file_client_args=file_client_args),
     dict(type='AgentScheduling',
         mode="unicast", 
-        submode="random", 
-        basic_data_limit=3e6
+        submode="closest", 
+        basic_data_limit=6e6
         ),
     dict(
         type='LoadPointsFromCooperativeAgents',
@@ -72,7 +73,7 @@ train_pipeline = [
         scale_ratio_range=[0.95, 1.05],
         translation_std=[0, 0, 0]),
     dict(type='RandomFlip3DCP', flip_ratio_bev_horizontal=0.5),
-    dict(type='PointsRangeFilterCP', point_cloud_range=point_cloud_range),
+    dict(type='PointsRangeFilterCP', point_cloud_range=point_range),
     dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
     dict(type='ObjectNameFilter', classes=class_names),
     dict(type='PointShuffle'),
@@ -100,9 +101,9 @@ test_pipeline = [
         use_dim=4,
         file_client_args=file_client_args),
     dict(type='AgentScheduling',
-        mode="full_communication", 
-        #submode="closest", 
-        #basic_data_limit=6e6
+        mode="unicast", 
+        submode="closest", 
+        basic_data_limit=6e6
         ),
     dict(
         type='LoadPointsFromCooperativeAgents',
@@ -123,13 +124,13 @@ test_pipeline = [
         flip=False,
         transforms=[
             dict(
-                type='GlobalRotScaleTrans',
+                type='GlobalRotScaleTransCP',
                 rot_range=[0, 0],
                 scale_ratio_range=[1., 1.],
                 translation_std=[0, 0, 0]),
-            dict(type='RandomFlip3D'),
+            # dict(type='RandomFlip3D'),
             dict(
-                type='PointsRangeFilterCP', point_cloud_range=point_cloud_range),
+                type='PointsRangeFilterCP', point_cloud_range=point_range),
             dict(
                 type='DefaultFormatBundle3DCP',
                 class_names=class_names,
@@ -174,7 +175,7 @@ eval_pipeline = [
     #     type='LoadPointsFromMultiSweeps',
     #     sweeps_num=10,
     #     file_client_args=file_client_args),
-    dict(type='PointsRangeFilterCP', point_cloud_range=point_cloud_range),
+    dict(type='PointsRangeFilterCP', point_cloud_range=point_range),
     dict(
         type='DefaultFormatBundle3DCP',
         class_names=class_names,
@@ -194,8 +195,8 @@ eval_pipeline = [
 ]
 # model settings
 data = dict(
-    samples_per_gpu=1,
-    workers_per_gpu=1, #调试时用0
+    samples_per_gpu=2,
+    workers_per_gpu=2, #调试时用0
     train=dict(
         type=dataset_type,
         data_root=data_root,
@@ -226,14 +227,14 @@ data = dict(
         test_mode=True,
         box_type_3d='LiDAR'))
 model = dict(
-    type='FCooper',
-    hypes_yaml='configs_CooperativePerception/opencood_configs/point_pillar_fcooper.yaml',
-    # pts_voxel_layer=dict(
-    #     max_num_points=64,
-    #     point_cloud_range=[-50, -50, -5, 50, 50, 3],
-    #     voxel_size=[0.4, 0.4, 4],
-    #     max_voxels=(30000, 40000),
-    #     ),
+    type='OpenCoodDetector',
+    hypes_yaml='configs_CooperativePerception/opencood_configs/point_pillar_v2xvit-100m.yaml',
+    pts_voxel_layer=dict(
+        max_num_points=64,
+        point_cloud_range=[-100, -100, -5, 100, 100, 3],
+        voxel_size=[0.4, 0.4, 4],
+        max_voxels=(30000, 40000),
+        ),
     pts_bbox_head=dict(
         type='Anchor3DHead',
         num_classes=3,
@@ -293,6 +294,6 @@ log_config = dict(
         dict(type='TextLoggerHook'),
         dict(type='TensorboardLoggerHook')
     ])
-runner = dict(type='EpochBasedRunner', max_epochs=24,)
-evaluation = dict(interval=24, pipeline=eval_pipeline)
+runner = dict(type='EpochBasedRunner', max_epochs=60,)
+evaluation = dict(interval=60, pipeline=eval_pipeline)
 optimizer = dict(type='AdamW', lr=1e-3, weight_decay=0.01)

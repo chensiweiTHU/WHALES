@@ -621,6 +621,7 @@ class DolphinsDataset(Custom3DDataset):
             'v1.0-mini': 'mini_val',
             'v1.0-trainval': 'val',
             "":"val",
+            'none':"val"
         }
         dolphins_eval = DolphinsEval(
             dolphins=dolphins,
