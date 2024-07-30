@@ -1,24 +1,5 @@
-" convert the config above into a dictionary "
 plugin = True
 plugin_dir = "mmdet3d_plugin/"
-_base_ = [
-    # '../_base_/models/hv_pointpillars_fpn_dolphins.py',
-    # '../_base_/datasets/dolphins-3d.py',
-    '../_base_/datasets/opv2v.py',
-    #'../_base_/schedules/schedule_2x.py',
-    '../_base_/default_runtime.py',
-]
-
-# dataset_type = 'DolphinsDataset'
-# data_root = 'data/dolphins-new/'
-# Input modality for Dolphins2 dataset, this is consistent with the submission
-# format which requires the information in input_modality.
-input_modality = dict(
-    use_lidar=True,
-    use_camera=False,
-    use_radar=False,
-    use_map=False,
-    use_external=False)
 class_names = ['Vehicle', 'Pedestrian', 'Cyclist']
 voxel_size=[0.075, 0.075, 0.2]
 num_point_features=4
@@ -80,7 +61,7 @@ model = dict(
             max_obj_per_sample=500,
             nms_config=dict(
                 nms_type='nms_gpu',
-                nms_thresh=0.2,
+                nms_thresh=0.1,
                 nms_pre_maxsize=1000,
                 nms_post_maxsize=150
             )
@@ -135,16 +116,3 @@ model = dict(
         eval_metric='kitti'
     )
 )
-file_client_args = dict(backend='disk')
-
-# runner = dict(type='EpochBasedRunner', max_epochs=36,)
-optimizer = dict(type='AdamW', lr=1e-3, weight_decay=0.001)
-lr_config = dict(policy='CosineAnnealing', warmup="linear",warmup_iters=500, min_lr=1e-7)
-
-
-optimizer_config = dict(grad_clip=None)
-# lr_config = dict(policy='CosineAnnealing', warmup=500, min_lr=1e-6)
-# momentum_config = None
-
-# runtime settings
-runner = dict(type='EpochBasedRunner', max_epochs=24)

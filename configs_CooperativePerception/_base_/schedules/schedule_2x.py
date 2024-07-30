@@ -12,3 +12,4 @@ lr_config = dict(
 momentum_config = None
 # runtime settings
 runner = dict(type='EpochBasedRunner', max_epochs=24)
+evaluation = dict(interval=6, metric='bbox')

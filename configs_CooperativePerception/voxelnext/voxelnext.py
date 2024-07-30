@@ -345,4 +345,4 @@ optimizer_config = dict(grad_clip=None)
 # momentum_config = None
 
 # runtime settings
-runner = dict(type='EpochBasedRunner', max_epochs=50)
+runner = dict(type='EpochBasedRunner', max_epochs=24)
