@@ -30,7 +30,7 @@ train_pipeline = [
         use_dim=4,
         file_client_args=file_client_args),
     dict(type='AgentScheduling',
-        mode="uni   cast",
+        mode="unicast",
         submode="random", 
         basic_data_limit=6e6
         ),

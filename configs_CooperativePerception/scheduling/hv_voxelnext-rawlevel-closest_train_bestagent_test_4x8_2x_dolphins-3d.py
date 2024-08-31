@@ -31,7 +31,7 @@ train_pipeline = [
         file_client_args=file_client_args),
     dict(type='AgentScheduling',
         mode="unicast",
-        submode="random", 
+        submode="closest", 
         basic_data_limit=6e6
         ),
     dict(
@@ -125,8 +125,8 @@ eval_pipeline = [
         load_dim=4, use_dim=4,
         file_client_args=file_client_args
         ),
-    dict(type='RawlevelPointCloudFusion'),
     dict(type='LoadAnnotations3D'),
+    dict(type='RawlevelPointCloudFusion'),
     # dict(
     #     type='LoadPointsFromMultiSweeps',
     #     sweeps_num=10,

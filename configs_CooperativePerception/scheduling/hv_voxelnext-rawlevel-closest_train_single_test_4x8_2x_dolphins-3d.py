@@ -31,7 +31,7 @@ train_pipeline = [
         file_client_args=file_client_args),
     dict(type='AgentScheduling',
         mode="unicast",
-        submode="random", 
+        submode="closest", 
         basic_data_limit=6e6
         ),
     dict(
@@ -63,18 +63,18 @@ test_pipeline = [
         load_dim=4,
         use_dim=4,
         file_client_args=file_client_args),
-    dict(type='AgentScheduling',
-        mode="unicast",
-        submode="best_agent", 
-        basic_data_limit=6e6
-        ),
-    dict(
-        type='LoadPointsFromCooperativeAgents',
-        coord_type='LIDAR',
-        load_dim=4, use_dim=4,
-        file_client_args=file_client_args
-        ),
-    dict(type='RawlevelPointCloudFusion'),
+    # dict(type='AgentScheduling',
+    #     mode="unicast",
+    #     submode="closest", 
+    #     basic_data_limit=6e6
+    #     ),
+    # dict(
+    #     type='LoadPointsFromCooperativeAgents',
+    #     coord_type='LIDAR',
+    #     load_dim=4, use_dim=4,
+    #     file_client_args=file_client_args
+    #     ),
+    # dict(type='RawlevelPointCloudFusion'),
     dict(
         type='MultiScaleFlipAug3D',
         img_scale=(1333, 800),
@@ -114,19 +114,19 @@ eval_pipeline = [
         load_dim=4,
         use_dim=4,
         file_client_args=file_client_args),
-    dict(type='AgentScheduling',
-        mode="unicast",
-        submode="best_agent", 
-        basic_data_limit=6e6
-        ),
-    dict(
-        type='LoadPointsFromCooperativeAgents',
-        coord_type='LIDAR',
-        load_dim=4, use_dim=4,
-        file_client_args=file_client_args
-        ),
-    dict(type='RawlevelPointCloudFusion'),
+    # dict(type='AgentScheduling',
+    #     mode="unicast",
+    #     submode="closest", 
+    #     basic_data_limit=6e6
+    #     ),
+    # dict(
+    #     type='LoadPointsFromCooperativeAgents',
+    #     coord_type='LIDAR',
+    #     load_dim=4, use_dim=4,
+    #     file_client_args=file_client_args
+    #     ),
     dict(type='LoadAnnotations3D'),
+    # dict(type='RawlevelPointCloudFusion'),
     # dict(
     #     type='LoadPointsFromMultiSweeps',
     #     sweeps_num=10,
@@ -148,8 +148,8 @@ eval_pipeline = [
 ]
 # model settings
 data = dict(
-    samples_per_gpu=0,
-    workers_per_gpu=0, #调试时用0
+    samples_per_gpu=4,
+    workers_per_gpu=4, #调试时用0
     train=dict(
         type=dataset_type,
         data_root=data_root,

@@ -161,6 +161,14 @@ class VoxelNeXtCoopertive(Base3DDetector):
         ]).to(device)
         bboxes_3d_tensor = torch.cat([bboxes_3d_tensor, gt_labels_3d_tensor.unsqueeze(-1)], dim=-1)
         batch_dict['gt_boxes'] = bboxes_3d_tensor
+        if 'cooperative_agents' in img_metas[0].keys() and infrastructure_points is None:
+            infrastructure_points = []
+            for i in range(len(img_metas)): # we only support 2 agents
+                agent = list(img_metas[i]['cooperative_agents'].keys())[0]
+                cooperative_points = img_metas[i]['cooperative_agents'][agent]['points']
+                if cooperative_points.device != device:
+                    cooperative_points = cooperative_points.to(device)
+                infrastructure_points.append(cooperative_points)
         if not self.single and self.proj_first:
             "project inf points to vehicle coordinate system in raw data"
             for i in range(len(infrastructure_points)):
@@ -221,7 +229,8 @@ class VoxelNeXtCoopertive(Base3DDetector):
 
     def simple_test(self,points=None,img_metas=None,img=None,infrastructure_points=None,infrastructure_img=None,**kwargs):
         "we cannot project points in test pipelines, so we need to project them here"
-        if not self.single: 
+        device = points[0].device
+        if not self.single and infrastructure_img is not None: # dair-v2x cannot project points in test pipelines, but other datasets can
             "project inf points to vehicle coordinate system in raw data"
             device = points[0].device
             for i in range(len(infrastructure_points)):
@@ -256,6 +265,14 @@ class VoxelNeXtCoopertive(Base3DDetector):
                 if self.raw:
                     points[i] = torch.cat([points[i],infrastructure_points[i]],dim=0)
                 # infrastructure points: about 45k x 4, last dim is intensity
+        if 'cooperative_agents' in img_metas[0].keys() and infrastructure_points is None:
+            infrastructure_points = []
+            for i in range(len(img_metas)): # we only support 2 agents
+                agent = list(img_metas[i]['cooperative_agents'].keys())[0]
+                cooperative_points = img_metas[i]['cooperative_agents'][agent]['points']
+                if cooperative_points.device != device:
+                    cooperative_points = cooperative_points.to(device)
+                infrastructure_points.append(cooperative_points)
         for i,points_inf in enumerate(infrastructure_points):
             if len(points_inf) == 0:
                 points_inf = torch.zeros((1,4)).to(device)

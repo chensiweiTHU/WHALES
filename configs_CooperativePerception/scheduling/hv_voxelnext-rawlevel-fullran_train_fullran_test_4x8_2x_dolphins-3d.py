@@ -30,8 +30,8 @@ train_pipeline = [
         use_dim=4,
         file_client_args=file_client_args),
     dict(type='AgentScheduling',
-        mode="unicast",
-        submode="random", 
+        mode="groupcast",
+        submode="full_random", 
         basic_data_limit=6e6
         ),
     dict(
@@ -64,8 +64,8 @@ test_pipeline = [
         use_dim=4,
         file_client_args=file_client_args),
     dict(type='AgentScheduling',
-        mode="unicast",
-        submode="best_agent", 
+        mode="groupcast",
+        submode="full_random", 
         basic_data_limit=6e6
         ),
     dict(
@@ -115,8 +115,8 @@ eval_pipeline = [
         use_dim=4,
         file_client_args=file_client_args),
     dict(type='AgentScheduling',
-        mode="unicast",
-        submode="best_agent", 
+        mode="groupcast",
+        submode="full_random", 
         basic_data_limit=6e6
         ),
     dict(
@@ -148,8 +148,8 @@ eval_pipeline = [
 ]
 # model settings
 data = dict(
-    samples_per_gpu=0,
-    workers_per_gpu=0, #调试时用0
+    samples_per_gpu=4,
+    workers_per_gpu=4, #调试时用0
     train=dict(
         type=dataset_type,
         data_root=data_root,
