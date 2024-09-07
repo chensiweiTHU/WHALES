@@ -142,4 +142,4 @@ data = dict(
 # Since the models are trained by 24 epochs by default, we set evaluation
 # interval to be 24. Please change the interval accordingly if you do not
 # use a default schedule.
-evaluation = dict(interval=6, pipeline=eval_pipeline)
+# evaluation = dict(interval=6, pipeline=eval_pipeline)

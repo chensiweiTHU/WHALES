@@ -3,8 +3,8 @@ plugin = True
 plugin_dir = "mmdet3d_plugin/"
 _base_ = [
     # '../_base_/models/hv_pointpillars_fpn_dolphins.py',
-    '../_base_/datasets/dolphins-3d.py',
-    #'../_base_/schedules/schedule_2x.py',
+    # '../_base_/datasets/dolphins-3d.py',
+    '../_base_/schedules/schedule_2x.py',
     '../_base_/default_runtime.py',
 ]
 
@@ -19,15 +19,15 @@ input_modality = dict(
     use_map=False,
     use_external=False)
 class_names = ['Vehicle', 'Pedestrian', 'Cyclist']
-voxel_size=[0.075, 0.075, 0.2]
+voxel_size=[0.1, 0.1, 0.05]
 num_point_features=4
-point_cloud_range=[-54.0, -54.0, -5.0, 54.0, 54.0, 3.0]
+point_cloud_range= [-108.0, -108.0, -5.0, 108.0, 108.0, 3.0]#[-54.0, -54.0, -5.0, 54.0, 54.0, 3.0]
 grid_size = [1440, 1440, 40]
 
 model = dict(
     type='VoxelNeXtCoopertive',
     pts_voxel_layer=dict(
-        max_num_points=1,
+        max_num_points=10,
         point_cloud_range=point_cloud_range,
         voxel_size=voxel_size,
         max_voxels=(240000, 320000)),
@@ -36,21 +36,21 @@ model = dict(
             num_point_features=num_point_features
             ),
     backbone_3d=dict(
-        type='VoxelResBackBone8xVoxelNeXtSPS',
+        type='VoxelResBackBone8xVoxelNeXt',
         input_channels = num_point_features,
         grid_size = grid_size,
         spconv_kernel_sizes=[3, 3, 3, 3], 
         channels=[16, 32, 64, 128, 128], 
-        out_channel=256,
+        out_channel=128,
         ),
-    fusion_channels=[512,384,256],
+    fusion_channels=[256,192,128],
     dense_head=dict(
         type='VoxelNeXtHead',
         model_cfg=dict(
         class_agnostic=False,
-        input_features=256,
+        input_features=128,
         class_names_each_head=[['Vehicle'],['Pedestrian'],['Cyclist']],#[['car'], ['truck', 'construction_vehicle'], ['bus', 'trailer'], ['barrier'], ['motorcycle', 'bicycle'], ['pedestrian', 'traffic_cone']],
-        shared_conv_channel=256,
+        shared_conv_channel=128,
         kernel_size_head=3,
         use_bias_before_norm=False,
         num_hm_conv=2,
@@ -75,7 +75,7 @@ model = dict(
         ),
         post_processing=dict(
             score_thresh=0.1,
-            post_center_limit_range=[-61.2, -61.2, -2.0, 61.2, 61.2, 2.0],
+            post_center_limit_range=[-122.4, -122.4, -2.0, 122.4, 122.4, 2.0],
             max_obj_per_sample=500,
             nms_config=dict(
                 nms_type='nms_gpu',
@@ -94,7 +94,7 @@ model = dict(
     bbox_coder=dict(
         type='CenterPointBBoxCoder',
         pc_range=point_cloud_range,
-        post_center_range=[-61.2, -61.2, -2, 61.2, 61.2, -1],
+        post_center_range=[-122.4, -122.4, -2.0, 122.4, 122.4, 2.0],
         max_num=500,
         score_threshold=0.1,
         out_size_factor=8,
@@ -113,7 +113,7 @@ model = dict(
             min_radius=2,
             code_weights=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.2, 0.2]),
     test_cfg=dict(
-            post_center_limit_range=[-61.2, -61.2, -10.0, 61.2, 61.2, 10.0],
+            post_center_limit_range=[-122.4, -122.4, -2.0, 122.4, 122.4, 2.0],
             max_per_img=500,
             max_pool_nms=False,
             min_radius=[4, 12, 10, 1, 0.85, 0.175],
@@ -130,10 +130,10 @@ model = dict(
         eval_metric='kitti'
     ),
     proj_first=False,
-    single=False
+    single=False,
+    dairv2x=False,
 )
 file_client_args = dict(backend='disk')
-
 train_pipeline = [
     dict(
         type='LoadPointsFromFile',
@@ -189,9 +189,9 @@ test_pipeline = [
         use_dim=4,
         file_client_args=file_client_args),
     dict(type='AgentScheduling',
-        mode="full_communication", 
-        #submode="closest", 
-        #basic_data_limit=6e6
+        mode="unicast", 
+        submode="closest", 
+        basic_data_limit=3e6
         ),
     dict(
         type='LoadPointsFromCooperativeAgents',
@@ -272,31 +272,4 @@ data = dict(
         modality=input_modality,
         test_mode=True,
         box_type_3d='LiDAR'))
-
-evaluation = dict(
-    interval=6,
-    pipeline=eval_pipeline,)
-lr = 0.001
-optimizer = dict(type='AdamW', lr=0.001, betas=(0.95, 0.99), weight_decay=0.01)
-optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
-lr_config = dict(
-    policy='cyclic',
-    target_ratio=(10, 0.0001),
-    cyclic_times=1,
-    step_ratio_up=0.4)
-momentum_config = dict(
-    policy='cyclic',
-    target_ratio=(0.8947368421052632, 1),
-    cyclic_times=1,
-    step_ratio_up=0.4)
-runner = dict(type='EpochBasedRunner', max_epochs=30)
-checkpoint_config = dict(interval=1)
-log_config = dict(
-    interval=50,
-    hooks=[dict(type='TextLoggerHook'),
-           dict(type='TensorboardLoggerHook')])
-dist_params = dict(backend='nccl')
-log_level = 'INFO'
-load_from = None
-resume_from = None
-workflow = [('train', 1)]
+# runner = dict(type='EpochBasedRunner', max_epochs=36,)

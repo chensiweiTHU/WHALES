@@ -208,7 +208,19 @@ def main():
     elif hasattr(dataset, 'PALETTE'):
         # segmentation dataset has `PALETTE` attribute
         model.PALETTE = dataset.PALETTE
-
+    # for i, data in enumerate(data_loader):
+    #     with torch.no_grad():
+    #         if i==0:
+    #             print('points:', data['points'][0].data[0][0])
+    #             points = data['points'][0].data
+    #             img_metas = data['img_metas'][0].data[0]
+    #             input_dict = dict(
+    #                 return_loss=False,
+    #                 points=points,
+    #                 img_metas=img_metas)
+    #             return_loss=False
+    #             torch.onnx.export(model,(return_loss,[points]), 'model.onnx')
+    #             break
     if not distributed:
         model = MMDataParallel(model, device_ids=[0])
         outputs = single_gpu_test(model, data_loader, args.show, args.show_dir)

@@ -27,7 +27,7 @@ from .v2x_voxelnet import V2XVoxelNet
 from .feature_flownet import FeatureFlowNet
 __all__ = [
     'MVXTwoStageDetector', 'VoxelNet', 'OpenCoodDetector', 'DynamicMVXFasterRCNN', 'MVXFasterRCNN',
-    'FCooper', 'V2VNet', 'PointPillarOpenCOOD', 'VoxelNeXt', 'V2XVoxelNet', 'FeatureFlowNet', 
+    'FCooper_opencood', 'FCooper', 'V2VNet', 'PointPillarOpenCOOD', 'VoxelNeXt', 'V2XVoxelNet', 'FeatureFlowNet', 
     'VoxelNeXtCoopertive', 'VoxelNeXtCoopertiveTemporal', 'VoxelNeXtCoopertivePruning'
 ]
 # __all__ = [

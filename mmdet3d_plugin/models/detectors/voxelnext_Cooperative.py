@@ -21,7 +21,8 @@ class VoxelNeXtCoopertive(Base3DDetector):
     """this is the cooperaivte version of VoxelNeXt, 
     which is used to fuse the results of multiple agents in DAIR-V2X dataset."""
     def __init__(self, pts_voxel_layer,pts_voxel_encoder,
-                  backbone_3d, fusion_channels, dense_head, post_processing, single=False,proj_first=False,raw=False, **kwargs ):
+                backbone_3d, fusion_channels, dense_head, post_processing,\
+                single=False,proj_first=False,raw=False, dairv2x=True, **kwargs ):
                   #num_class, dataset):
         super(VoxelNeXtCoopertive,self).__init__()
         # self.module_list = self.build_networks()
@@ -42,6 +43,7 @@ class VoxelNeXtCoopertive(Base3DDetector):
             self.dense_head = builder.build_head(dense_head)
         if post_processing:
             self.post_processing_cfg = post_processing
+        self.dairv2x = dairv2x
     def build_fusion_net(self,channels=[512,384,256]):
         fusion_net = spconv.SparseSequential(
             spconv.SubMConv2d(channels[0], channels[1], 5, stride=1, padding=2, bias=False),
@@ -149,12 +151,13 @@ class VoxelNeXtCoopertive(Base3DDetector):
         ]).to(device)
         # # get first 7 dims
         "first filter out -1 labels in DAIR-V2X dataset by FFNet"
-        if self.dense_head.num_class>1:
-            for i,l in enumerate(gt_labels_3d):
-                gt_labels_3d[i][l == -1] = self.dense_head.num_class-1
-        else:
-            gt_bboxes_3d = [bboxes_3d_tensor[i][l != -1] for i,l in enumerate(gt_labels_3d)]
-            gt_labels_3d = [l[l != -1] for l in gt_labels_3d]
+        if self.dairv2x:
+            if self.dense_head.num_class>1:
+                for i,l in enumerate(gt_labels_3d):
+                    gt_labels_3d[i][l == -1] = self.dense_head.num_class-1
+            else:
+                gt_bboxes_3d = [bboxes_3d_tensor[i][l != -1] for i,l in enumerate(gt_labels_3d)]
+                gt_labels_3d = [l[l != -1] for l in gt_labels_3d]
         gt_labels_3d_tensor = torch.stack([
             torch.cat([l.float()+1, torch.zeros(max_box_num - len(l)).to(l.device)])
             for l in gt_labels_3d
@@ -272,6 +275,8 @@ class VoxelNeXtCoopertive(Base3DDetector):
                 cooperative_points = img_metas[i]['cooperative_agents'][agent]['points']
                 if cooperative_points.device != device:
                     cooperative_points = cooperative_points.to(device)
+                if len(cooperative_points) == 0:
+                    cooperative_points = torch.tensor([[0,0,-1.5,1.3e-3]]).to(device)
                 infrastructure_points.append(cooperative_points)
         for i,points_inf in enumerate(infrastructure_points):
             if len(points_inf) == 0:
@@ -280,7 +285,7 @@ class VoxelNeXtCoopertive(Base3DDetector):
         img_feats, voxel_feats = self.extract_feat(
             points, img=img, img_metas=img_metas)
         pts_feats = self.backbone_3d(voxel_feats)
-        if not self.single and not self.raw:        
+        if not self.single and not self.raw and len(infrastructure_points[0])>10:  # when there are too few points, the network will crash       
             "if infrastructure_points[0] is not torch.Tensor"
             if not isinstance(infrastructure_points[0],torch.Tensor):
                 if isinstance(infrastructure_points[0],list):

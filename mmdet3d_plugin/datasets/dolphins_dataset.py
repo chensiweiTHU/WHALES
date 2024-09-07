@@ -707,6 +707,10 @@ class DolphinsDataset(Custom3DDataset):
             # should take the inner dict out of 'pts_bbox' or 'img_bbox' dict
             result_files = dict()
             for name in key_list:
+                # if name == 'bboxes_3d' or name == 'scores_3d' or name == 'labels_3d':
+                #     continue #  we already processed it in pts_bbox
+                if name != 'pts_bbox' and name != 'img_bbox':
+                    continue #  we already processed it in pts_bbox
                 print(f'\nFormating bboxes of {name}')
                 results_ = [out[name] for out in results]
                 tmp_file_ = osp.join(jsonfile_prefix, name)

@@ -107,10 +107,6 @@ model = dict(
             post_max_size=83,
             nms_thr=0.2),
     ),
-    #     POST_PROCESSING:
-#         RECALL_THRESH_LIST: [0.3, 0.5, 0.7]
-
-#         EVAL_METRIC: kitti
     post_processing=dict(
         recall_thresh_list=[0.3, 0.5, 0.7],
         eval_metric='kitti'
