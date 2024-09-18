@@ -66,7 +66,7 @@ We focus on agent scheduling in our experiments, We implement scheduling algorit
 
 ## Stand-alone 3D Object Detection Benchmark (50m/100m)
 
-| Method | $\text{AP}_{Veh}\uparrow$ | $\text{AP}_{Ped}\uparrow$ | $\text{AP}_{Cyc}\uparrow$ | mAP$\uparrow$ | mATE$\downarrow$ | mASE$\downarrow$ | mAOE$\downarrow$ | mAVE$\downarrow$ | NDS$\uparrow$ |
+| Method | $\text{AP}_{Veh}\uparrow$ | $\text{AP}_{Ped}\uparrow$ | $\text{AP}_{Cyc}\uparrow$ | $mAP\uparrow$ | $mATE\downarrow$ | $mASE\downarrow$ | $mAOE\downarrow$ | $mAVE\downarrow$ | $NDS\uparrow$ |
 |---------|--------------------------|--------------------------|--------------------------|----------------|-------------------|-------------------|-------------------|-------------------|--------------|
 | Pointpillars | 67.1/41.5 | 38.0/6.3 | 37.3/11.6 | 47.5/19.8 | 0.117/0.247 | 0.876/0.880 | 1.069/1.126 | 1.260/1.625 | 33.8/18.6 |
 | SECOND | 58.5/38.8 | 27.1/12.1 | 24.1/12.9 | 36.6/21.2 | 0.106/0.156 | 0.875/0.878 | 1.748/1.729 | 1.005/1.256 | 28.5/20.3 |
