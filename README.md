@@ -1,5 +1,5 @@
 # WHALES
-This is the official repository of WHALES.
+This is the official repository of WHALES. Our dataset can be downloaded at https://pan.baidu.com/s/1dintX-d1T-m2uACqDlAM9A with a code `gduh`.
 
 Achieving high levels of safety and reliability in autonomous driving remains a critical challenge, especially due to occlusion and limited perception ranges in stand-alone systems. Cooperative perception among vehicles offers a promising solution, but existing research is hindered by datasets with a limited number of agents. Scaling up the number of cooperating agents is non-trivial and introduces significant computational and technical hurdles that have not been addressed in previous works.
 
