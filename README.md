@@ -6,6 +6,29 @@ Achieving high levels of safety and reliability in autonomous driving remains a 
 To bridge this gap, we present **W**ireless en**H**anced **A**utonomous vehicles with **L**arge number of **E**ngaged agent**S** (**WHALES**), a dataset generated using CARLA simulator that features an unprecedented average of 8.4 agents per driving sequence. In addition to providing the largest number of agents and viewpoints among autonomous driving datasets, WHALES records agent behaviors, enabling cooperation across multiple tasks. This expansion allows for new supporting tasks in cooperative perception.
 
 As a demonstration, we conduct experiments on agent scheduling task, where the ego agent selects one of multiple candidate agents to cooperate with, optimizing perception gains in autonomous driving. The WHALES dataset and codebase can be found at [WHALES GitHub](https://github.com/chensiweiTHU/WHALES).
+# Strengths of our dataset:
+## A Detailed Comparison Between Proposed Dataset and Existing Autonomous Driving Datasets
+
+| Dataset | Year | Real/Simulated | V2X | Image | Point Cloud | 3D Annotations | Classes | Average No. of Agents |
+|---------|------|-----------------|-----|-------|-------------|---------------|---------|-----------------------|
+| KITTI | 2012 | real | No | 15k | 15k | 200k | 8 | 1|
+| nuScenes | 2019 | real | No | 1.4M | 400k | 1.4M | 23 | 1| 
+| DAIR-V2X | 2021 | real | V2V&I | 39k | 39k | 464k | 10 | 2|
+| V2X-Sim | 2021 | simulated | V2V&I | 0 | 10k | 26.6k | 2 | 2|
+| OPV2V | 2022 | simulated | V2V | 44k | 11k | 230k | 1 | 3|
+| DOLPHINS | 2022 | simulated | V2V&I | 42k | 42k | 293k | 3 | 3|
+| V2V4Real | 2023 | real | V2V | 40k | 20k | 240k | 5 | 2|
+| **WHALES (Ours)** | 2024 | simulated | V2V&I | 70k | 17k | 2.01M | 3 | 8.4|
+
+## Four Classes of Agents in the WHALES Dataset
+
+| Agent Location | Agent Category | Sensor Configuration | Planning & Control | Tasks | Spawning Positions |
+|-----------------|----------------|---------------------|---------------------|-------|---------------------|
+| On-Road          | Uncontrolled CAV | LiDAR × 1 + Camera × 4 | CARLA Auto-pilot | Perception | Random, deterministic |
+|                 | Controlled CAV | LiDAR × 1 + Camera × 4 | RL Algorithm | Perception & Planning | Random, deterministic |
+| Roadside         | RSU            | LiDAR × 1 + Camera × 4 | RL Algorithm | Perception & Planning | Static |
+| Anywhere         | Obstacle Agent  | No sensors equipped  | CARLA Auto-pilot | No tasks | Random |
+
 # Installation
 
 1. Clone our repository:
