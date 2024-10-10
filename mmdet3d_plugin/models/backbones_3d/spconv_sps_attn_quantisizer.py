@@ -121,10 +121,12 @@ class VoxelResSPSQuantiseizer(nn.Module):
 
         x_conv5.indices[:, 1:] *= 2
         x_conv6.indices[:, 1:] *= 4
+        x_conv4 = x_conv4.replace_feature(torch.cat(x_conv4.features, x_conv5.features, x_conv6.features))
+        x_conv4.indices = torch.cat(x_conv4.indices, x_conv5.indices, x_conv6.indices)
 
         pruning_ratio = self.downsample_pruning_ratio[0]
-        voxel_importance = self.spsformer(x_conv4, x_conv5, x_conv6, pruning_ratio, batch_dict)
-
+        x_conv1_former, batch_dict = self.spsformer(x_conv1, x_conv4, pruning_ratio, batch_dict)
+        voxel_importance = batch_dict['voxel_importance']
         # return x_conv2, batch_dict
         # if self.backbone_model is None:
         #     x = self.conv_input(input_sp_tensor) # 41X1440X1440x16 33954 

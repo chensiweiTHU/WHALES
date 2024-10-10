@@ -9,6 +9,7 @@ import torch
 class FCooper(MVXFasterRCNN):
     def __init__(self, **kwargs):
         super(FCooper, self).__init__(**kwargs)
+        # BUILD FUSION MODEL
     def forward_train(self,
                       points=None,
                       img_metas=None,
@@ -35,10 +36,14 @@ class FCooper(MVXFasterRCNN):
         cooperative_img_feats, cooperative_pts_feats = self.extract_feat(
             cooperative_points, img=img, img_metas=img_metas)
         pts_feats[0] = torch.unsqueeze(pts_feats[0], -1)
+        # FUSION
+        # Change the fusion model here
+        # BXCXHXW 4,384,200,200
         cooperative_pts_feats[0] = torch.unsqueeze(cooperative_pts_feats[0], -1)
         fused_pts_feats = torch.cat([pts_feats[0], cooperative_pts_feats[0]], dim=-1)
         fused_pts_feats, _ = torch.max(fused_pts_feats, dim=-1)
         fused_pts_feats = [fused_pts_feats]
+        # FINISH FUSION
         losses = dict()
         if pts_feats:
             losses_pts = self.forward_pts_train(fused_pts_feats, gt_bboxes_3d,

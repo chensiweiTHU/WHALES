@@ -19,7 +19,7 @@ input_modality = dict(
     use_map=False,
     use_external=False)
 class_names = ['Vehicle', 'Pedestrian', 'Cyclist']
-voxel_size=[0.1, 0.1, 0.05]
+voxel_size=[0.15, 0.15, 0.2]
 num_point_features=4
 point_cloud_range= [-108.0, -108.0, -5.0, 108.0, 108.0, 3.0]#[-54.0, -54.0, -5.0, 54.0, 54.0, 3.0]
 grid_size = [1440, 1440, 40]
@@ -27,10 +27,10 @@ grid_size = [1440, 1440, 40]
 model = dict(
     type='VoxelNeXtCoopertive',
     pts_voxel_layer=dict(
-        max_num_points=10,
+        max_num_points=20,
         point_cloud_range=point_cloud_range,
         voxel_size=voxel_size,
-        max_voxels=(240000, 320000)),
+        max_voxels=(480000, 640000)),
     pts_voxel_encoder=dict(
             type='MeanVFE',
             num_point_features=num_point_features
@@ -253,7 +253,12 @@ data = dict(
         test_mode=False,
         # we use box_type_3d='LiDAR' in kitti and nuscenes dataset
         # and box_type_3d='Depth' in sunrgbd and scannet dataset.
-        box_type_3d='LiDAR'),
+        box_type_3d='LiDAR',
+        class_range={
+                "Vehicle": 100,
+                "Pedestrian": 80,
+                "Cyclist": 80,
+                }),
     val=dict(
         type=dataset_type,
         data_root=data_root,
@@ -262,7 +267,12 @@ data = dict(
         classes=class_names,
         modality=input_modality,
         test_mode=True,
-        box_type_3d='LiDAR'),
+        box_type_3d='LiDAR',
+        class_range={
+                "Vehicle": 100,
+                "Pedestrian": 80,
+                "Cyclist": 80,
+                }),
     test=dict(
         type=dataset_type,
         data_root=data_root,
@@ -271,5 +281,10 @@ data = dict(
         classes=class_names,
         modality=input_modality,
         test_mode=True,
-        box_type_3d='LiDAR'))
+        box_type_3d='LiDAR',
+        class_range={
+                "Vehicle": 100,
+                "Pedestrian": 80,
+                "Cyclist": 80,
+                }))
 # runner = dict(type='EpochBasedRunner', max_epochs=36,)

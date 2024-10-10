@@ -126,8 +126,8 @@ def _fill_trainval_infos(dolphins:Dolphins,
     timestamp = step * time_interval
     sample_data = dolphins.sample[dolphins._token2ind['sample'][token]] 
     rotation = sample_data['sample_annotation'][vehicle_index]['rotation']
-    veh_or_rsu = 'vehicle' if vehicle_index < dolphins.scenen[sample]['vehicle_num']-1 else 'rsu'
-
+    veh_or_rsu = 'vehicle' if vehicle_index < dolphins.scenen[sample]['vehicle_num'] else 'rsu'
+    # 错了，没有-1
     info = {
         'lidar_path': lidar_path,
         'num_features': 5,

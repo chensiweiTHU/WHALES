@@ -220,7 +220,9 @@ class OpenCoodDetector(Base3DDetector):
             points_np = [points[i].cpu().numpy()]
             if cooperative:
                 for key in img_metas[i]['cooperative_agents'].keys():
-                    points_np.append(img_metas[i]['cooperative_agents'][key]['points'].cpu().numpy())
+                    # print(type(img_metas[i]['cooperative_agents'][key]['points']))
+                    points_np.append(img_metas[i]['cooperative_agents'][key]['points'].tensor.cpu().numpy())
+                    # points_np.append(img_metas[i]['cooperative_agents'][key]['points'].numpy())
             points_voxel = [
                 self.pre_processor.preprocess(points_np[p])
                 for p in range(len(points_np))

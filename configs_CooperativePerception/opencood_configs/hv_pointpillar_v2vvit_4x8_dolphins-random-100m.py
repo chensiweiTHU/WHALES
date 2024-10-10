@@ -151,48 +151,49 @@ test_pipeline = [
 ]
 # construct a pipeline for data and gt loading in show function
 # please keep its loading function consistent with test_pipeline (e.g. client)
-eval_pipeline = [
-    dict(
-        type='LoadPointsFromFile',
-        coord_type='LIDAR',
-        load_dim=4,
-        use_dim=4,
-        file_client_args=file_client_args),
-    dict(type='AgentScheduling',
-        mode="unicast", 
-        submode="closest", 
-        basic_data_limit=6e6
-        ),
-    dict(
-        type='LoadPointsFromCooperativeAgents',
-        coord_type='LIDAR',
-        load_dim=4, use_dim=4,
-        file_client_args=file_client_args
-        ),
-    dict(type='LoadAnnotations3D'),
-    dict(type='ProjectCooperativePCD2ego'),
-    # dict(
-    #     type='LoadPointsFromMultiSweeps',
-    #     sweeps_num=10,
-    #     file_client_args=file_client_args),
-    dict(type='PointsRangeFilterCP', point_cloud_range=point_range),
-    dict(
-        type='DefaultFormatBundle3DCP',
-        class_names=class_names,
-        with_label=False),
-    dict(type='Collect3D', keys=['points'], meta_keys=['filename', 'ori_shape', 'img_shape', 'lidar2img',
-                    'depth2img', 'cam2img', 'pad_shape',
-                    'scale_factor', 'flip', 'pcd_horizontal_flip',
-                    'pcd_vertical_flip', 'box_mode_3d', 'box_type_3d',
-                    'img_norm_cfg', 'pcd_trans', 'sample_idx',
-                    'pcd_scale_factor', 'pcd_rotation', 'pts_filename',
-                    'transformation_3d_flow',
-                    # new keys
-                    'transmitted_data_size',
-                    'cooperative_agents',
-                    'ego_agent'
-                    ])
-]
+eval_pipeline = test_pipeline
+# eval_pipeline = [
+#     dict(
+#         type='LoadPointsFromFile',
+#         coord_type='LIDAR',
+#         load_dim=4,
+#         use_dim=4,
+#         file_client_args=file_client_args),
+#     dict(type='AgentScheduling',
+#         mode="unicast", 
+#         submode="closest", 
+#         basic_data_limit=6e6
+#         ),
+#     dict(
+#         type='LoadPointsFromCooperativeAgents',
+#         coord_type='LIDAR',
+#         load_dim=4, use_dim=4,
+#         file_client_args=file_client_args
+#         ),
+#     dict(type='LoadAnnotations3D'),
+#     dict(type='ProjectCooperativePCD2ego'),
+#     # dict(
+#     #     type='LoadPointsFromMultiSweeps',
+#     #     sweeps_num=10,
+#     #     file_client_args=file_client_args),
+#     dict(type='PointsRangeFilterCP', point_cloud_range=point_range),
+#     dict(
+#         type='DefaultFormatBundle3DCP',
+#         class_names=class_names,
+#         with_label=False),
+#     dict(type='Collect3D', keys=['points'], meta_keys=['filename', 'ori_shape', 'img_shape', 'lidar2img',
+#                     'depth2img', 'cam2img', 'pad_shape',
+#                     'scale_factor', 'flip', 'pcd_horizontal_flip',
+#                     'pcd_vertical_flip', 'box_mode_3d', 'box_type_3d',
+#                     'img_norm_cfg', 'pcd_trans', 'sample_idx',
+#                     'pcd_scale_factor', 'pcd_rotation', 'pts_filename',
+#                     'transformation_3d_flow',
+#                     # new keys
+#                     'transmitted_data_size',
+#                     'cooperative_agents',
+#                     'ego_agent'
+#                     ])
+# ]
 # model settings
 data = dict(
     samples_per_gpu=2,

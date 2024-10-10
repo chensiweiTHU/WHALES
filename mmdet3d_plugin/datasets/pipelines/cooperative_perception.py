@@ -10,7 +10,7 @@ from mmdet3d.datasets.pipelines import DefaultFormatBundle3D,PointsRangeFilter,\
     GlobalRotScaleTrans,RandomFlip3D,PointShuffle
 # from mmdet3d.datasets.pipelines import 
 from mmcv.parallel import DataContainer as DC
-
+from time import sleep
 @PIPELINES.register_module()
 class PointQuantization(object):
     def __init__(self, voxel_size, quantize_coords_range, q_delta=1.6e-5):
@@ -57,6 +57,8 @@ class PointsRangeFilterCP(PointsRangeFilter):
         if 'infrastructure_points' in results.keys():
             points = results['infrastructure_points']
             points_mask = points.in_range_3d(self.pcd_range)
+
+
             clean_points = points[points_mask]
             results['infrastructure_points'] = clean_points
         return results
@@ -196,7 +198,7 @@ class ProjectCooperativePCD2ego(object):
             vis=False
             if vis:
                 from mmdet3d.core.visualizer.show_result import show_result
-                show_result(points, None,None,'workdirs/',results['sample_idx']+'raw-level-fusion',False,False)
+                show_result(points, None,None,'workdirs/',results['sample_idx']+'raw-level-fusion', False, False)
                 print('raw-level-fusion-visualized!!!!!!!!!!')
                 import time 
                 time.sleep(5)
@@ -285,6 +287,12 @@ class RawlevelPointCloudFusion(object):
                 cp_points = turn_matrix@np.linalg.inv(matrix_e) @ matrix_c @turn_matrix@ cp_points
                 cp_points = cp_points.T
                 cp_points_list.append(cp_points)
+                if visualization:
+                    # time.sleep(0.3)
+                    sleep(0.3)
+                    # print('cp_points',cp_points.shape)
+                    cp_points = cp_points.astype(np.float32)
+                    cp_points.tofile(save_path+results['sample_idx']+'projected'+veh_token+'.bin')
             points = np.concatenate(cp_points_list, axis=0)
             if visualization:
                 points=points.astype(np.float32)
@@ -327,6 +335,8 @@ class AgentScheduling(object):
 
     def __call__(self, results: dict):
         # results[]
+        if 'transmitted_data_size' not in results.keys():
+            results['transmitted_data_size'] = 0
         if self.current_scene != results['scene_token']:
             self.current_scene = results['scene_token']
             self.history_schedules = dict()
@@ -423,106 +433,154 @@ class AgentScheduling(object):
                 results['cooperative_datasize_limit'] = {
                     best_agent: self.basic_data_limit
                 }
-        elif self.mode == "UCB":
-            pass
+            # elif self.submode == "UCB":
+            #     pass
 
-        elif self.mode == "mass-modified":
-            self.updateEgoCPHistory(results)
-            available_agents = list(results['cooperative_agents'].keys())
+            # elif self.submode == "mass-modified":
+            #     self.updateEgoCPHistory(results)
+            #     available_agents = list(results['cooperative_agents'].keys())
 
-            cooperative_agent = None
-            max_ucb_score = -float('inf')
+            #     cooperative_agent = None
+            #     max_ucb_score = -float('inf')
 
-            for agent in available_agents:
-                if agent not in self.ego_cp_history:
-                    cooperative_agent = agent
-                    break
-            else:
+            #     for agent in available_agents:
+            #         if agent not in self.ego_cp_history:
+            #             cooperative_agent = agent
+            #             break
+            #     else:
+            #         for agent in available_agents:
+            #             if agent in self.ego_cp_history:
+            #                 # Retrieve last_seen_time and last_seen_gain from the dedicated dictionary
+            #                 if agent in self.agent_performance_history:
+            #                     performance_history = self.agent_performance_history[agent]
+            #                     last_seen_time = performance_history['last_seen_time']
+            #                     last_seen_gain = performance_history['last_seen_gain']
+            #                     last_seen_score = performance_history['last_seen_score']
+            #                 else:
+            #                     # Fallback to the most recent record if not found in the performance history
+            #                     last_cp_performance = self.ego_cp_history[agent][-1]
+            #                     last_seen_time = last_cp_performance['timestep']
+            #                     last_seen_gain = last_cp_performance['num_vehicles_within_range']
+            #                     last_seen_score = np.mean(last_cp_performance['scores']) if last_cp_performance['scores'] else 0
+
+            #                     # Update the dedicated dictionary
+
+            #             # Calculate UCB score
+            #             ucb_score = last_seen_gain + self.beta * np.sqrt(self.current_timestep - last_seen_time)
+
+            #             if ucb_score > max_ucb_score:
+            #                 max_ucb_score = ucb_score
+            #                 cooperative_agent = agent
+            #             # print(f"Agent {agent} has UCB score {ucb_score} at timestep {self.current_timestep}")
+
+            #     if cooperative_agent is not None:
+            #         # Update the results with the selected cooperative agent information
+            #         results['cooperative_veh_tokens'] = [cooperative_agent]
+            #         results['cooperative_agents'] = {
+            #             cooperative_agent: results['cooperative_agents'][cooperative_agent]
+            #         }
+            #         results['cooperative_datasize_limit'] = {
+            #             cooperative_agent: self.basic_data_limit
+            #         }
+
+            #         self.agent_performance_history[agent] = {
+            #             'last_seen_time': last_seen_time,
+            #             'last_seen_gain': last_seen_gain,
+            #             'last_seen_score': last_seen_score,
+            #         }
+
+
+            elif self.submode == "mass":
+                last_cp_agent = self.history_schedules.get(self.current_timestep - 5, None)
+                agents_data = self.withinRange(results)
+                available_agents = list(results['cooperative_agents'].keys())
+
+                cooperative_agent = None
+                max_ucb_score = float('-inf')
+
+                # Loop over available agents to find a suitable cooperative agent
                 for agent in available_agents:
-                    if agent in self.ego_cp_history:
-                        # Retrieve last_seen_time and last_seen_gain from the dedicated dictionary
-                        if agent in self.agent_performance_history:
-                            performance_history = self.agent_performance_history[agent]
-                            last_seen_time = performance_history['last_seen_time']
-                            last_seen_gain = performance_history['last_seen_gain']
-                            last_seen_score = performance_history['last_seen_score']
-                        else:
-                            # Fallback to the most recent record if not found in the performance history
-                            last_cp_performance = self.ego_cp_history[agent][-1]
-                            last_seen_time = last_cp_performance['timestep']
-                            last_seen_gain = last_cp_performance['num_vehicles_within_range']
-                            last_seen_score = np.mean(last_cp_performance['scores']) if last_cp_performance['scores'] else 0
-
-                            # Update the dedicated dictionary
-
-                    # Calculate UCB score
-                    ucb_score = last_seen_gain + self.beta * np.sqrt(self.current_timestep - last_seen_time)
-
-                    if ucb_score > max_ucb_score:
-                        max_ucb_score = ucb_score
+                    if agent not in self.history_schedules:
                         cooperative_agent = agent
-                    # print(f"Agent {agent} has UCB score {ucb_score} at timestep {self.current_timestep}")
+                        break
+                else:
+                    for agent in available_agents:
+                        if agent not in self.history_agent_results:
+                            self.history_agent_results[agent] = {
+                                'last_seen_time': self.current_timestep,
+                                'last_seen_gain': agents_data[agent]['num_vehicles_within_range']
+                            }
 
-            if cooperative_agent is not None:
-                # Update the results with the selected cooperative agent information
-                results['cooperative_veh_tokens'] = [cooperative_agent]
-                results['cooperative_agents'] = {
-                    cooperative_agent: results['cooperative_agents'][cooperative_agent]
-                }
-                results['cooperative_datasize_limit'] = {
-                    cooperative_agent: self.basic_data_limit
-                }
+                        last_seen_time = self.history_agent_results[agent]['last_seen_time']
+                        last_seen_gain = self.history_agent_results[agent]['last_seen_gain']
 
-                self.agent_performance_history[agent] = {
-                    'last_seen_time': last_seen_time,
-                    'last_seen_gain': last_seen_gain,
-                    'last_seen_score': last_seen_score,
-                }
+                        # Calculate UCB score
+                        ucb_score = last_seen_gain + self.beta * np.sqrt(self.current_timestep - last_seen_time)
 
+                        # Apply penalty if this agent was the last cooperative agent chosen
+                        if agent == last_cp_agent:
+                            ucb_score *= 0.9  # Penalize by reducing its score by 10%
 
-        elif self.mode == "mass":
-            last_cp_agent = self.history_schedules.get(self.current_timestep - 5, None)
-            agents_data = self.withinRange(results)
-            # ego_agent = results['veh_token']
-            available_agents = list(results['cooperative_agents'].keys())
+                        if ucb_score > max_ucb_score:
+                            max_ucb_score = ucb_score
+                            cooperative_agent = agent
 
-            cooperative_agent = None
+                if cooperative_agent is not None:
+                    results['cooperative_veh_tokens'] = [cooperative_agent]
+                    results['cooperative_agents'] = {
+                        cooperative_agent: results['cooperative_agents'][cooperative_agent]
+                    }
+                    results['cooperative_datasize_limit'] = {
+                        cooperative_agent: self.basic_data_limit
+                    }
 
-            for agent in available_agents:
-                if agent not in self.history_schedules:
-                    cooperative_agent = agent
-                    break
-            else:
-                for agent in available_agents:
-                    if agent not in self.history_agent_results:
-                        self.history_agent_results[agent] = {
-                            'last_seen_time': self.current_timestep,
-                            'last_seen_gain': agents_data[agent]['num_vehicles_within_range']
-                        }
-                    last_seen_time = self.history_agent_results[agent]['last_seen_time']
-                    last_seen_gain = self.history_agent_results[agent]['last_seen_gain']
+                    self.history_agent_results[cooperative_agent] = {
+                        'last_seen_time': self.current_timestep,
+                        'last_seen_gain': agents_data[cooperative_agent]['num_vehicles_within_range']
+                    }
+            # elif self.submode == "mass":
+            #     last_cp_agent = self.history_schedules.get(self.current_timestep - 5, None)
+            #     agents_data = self.withinRange(results)
+            #     # ego_agent = results['veh_token']
+            #     available_agents = list(results['cooperative_agents'].keys())
 
-                    ucb_score = last_seen_gain + self.beta * np.sqrt(self.current_timestep - last_seen_time)
+            #     cooperative_agent = None
 
-                    if ucb_score > max_ucb_score:
-                        max_ucb_score = ucb_score
-                        cooperative_agent = agent
+            #     for agent in available_agents:
+            #         if agent not in self.history_schedules:
+            #             cooperative_agent = agent
+            #             break
+            #     else:
+            #         for agent in available_agents:
+            #             if agent not in self.history_agent_results:
+            #                 self.history_agent_results[agent] = {
+            #                     'last_seen_time': self.current_timestep,
+            #                     'last_seen_gain': agents_data[agent]['num_vehicles_within_range']
+            #                 }
+            #             last_seen_time = self.history_agent_results[agent]['last_seen_time']
+            #             last_seen_gain = self.history_agent_results[agent]['last_seen_gain']
 
-            if cooperative_agent is not None:
-                results['cooperative_veh_tokens'] = [cooperative_agent]
-                results['cooperative_agents'] = {
-                    cooperative_agent: results['cooperative_agents'][cooperative_agent]
-                }
-                results['cooperative_datasize_limit'] = {
-                    cooperative_agent: self.basic_data_limit
-                }
+            #             ucb_score = last_seen_gain + self.beta * np.sqrt(self.current_timestep - last_seen_time)
 
-                self.history_agent_results[cooperative_agent] = {
-                    'last_seen_time': self.current_timestep,
-                    'last_seen_gain': agents_data[cooperative_agent]['num_vehicles_within_range']
-                }
+            #             if ucb_score > max_ucb_score:
+            #                 max_ucb_score = ucb_score
+            #                 cooperative_agent = agent
 
-        self.history_schedules[self.current_timestep] = results['cooperative_veh_tokens']
+            #     if cooperative_agent is not None:
+            #         results['cooperative_veh_tokens'] = [cooperative_agent]
+            #         results['cooperative_agents'] = {
+            #             cooperative_agent: results['cooperative_agents'][cooperative_agent]
+            #         }
+            #         results['cooperative_datasize_limit'] = {
+            #             cooperative_agent: self.basic_data_limit
+            #         }
+
+            #         self.history_agent_results[cooperative_agent] = {
+            #             'last_seen_time': self.current_timestep,
+            #             'last_seen_gain': agents_data[cooperative_agent]['num_vehicles_within_range']
+            #         }
+
+            self.history_schedules[self.current_timestep] = results['cooperative_veh_tokens']
         return results                
 
     def withinRange(self, results):

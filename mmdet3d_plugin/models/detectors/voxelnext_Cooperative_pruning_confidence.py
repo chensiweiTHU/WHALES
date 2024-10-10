@@ -38,13 +38,13 @@ class PointQuantization(object):
         return points
 
 @DETECTORS.register_module(force=True)
-class (VoxelNeXtCoopertive):
+class VoxelNeXtCoopertivePruningConfidence(VoxelNeXtCoopertive):
     """this is the cooperaivte version of VoxelNeXt, 
     which is used to fuse the results of multiple agents in DAIR-V2X dataset."""
     def __init__(self, pts_voxel_layer,pts_voxel_encoder,
                   backbone_3d, fusion_channels, dense_head, post_processing, single=False,proj_first=False,raw=False, pruning=None, quant_levels=[[0.04, 0.04, 0.0625],[0.16, 0.16, 0.25]], **kwargs ):
                   #num_class, dataset):
-        super(,self).__init__(pts_voxel_layer,pts_voxel_encoder,
+        super(VoxelNeXtCoopertivePruningConfidence,self).__init__(pts_voxel_layer,pts_voxel_encoder,
                   backbone_3d, fusion_channels, dense_head, post_processing, single=single,proj_first=proj_first,raw=raw, **kwargs)
         if pruning is not None:
             self.pruning = builder.build_backbone(pruning) # we put the pruning block in the backbone
@@ -107,7 +107,7 @@ class (VoxelNeXtCoopertive):
         ]).to(device)
         # # get first 7 dims
         "first filter out -1 labels in DAIR-V2X dataset by FFNet"
-        if self.dense_head.num_class>1:
+        if len(self.dense_head.num_classes)>1:
             for i,l in enumerate(gt_labels_3d):
                 gt_labels_3d[i][l == -1] = self.dense_head.num_class-1
         else:
@@ -213,7 +213,7 @@ class (VoxelNeXtCoopertive):
             # else:
             #     pts_feats = self.feature_fusion_warp(pts_feats, pts_feats_inf, img_metas)
         batch_dict.update(pts_feats)
-        output_dict = self.dense_head(batch_dict) # img_feats for future use
+        output_dict = self.dense_head(batch_dict, img_metas) # img_feats for future use
         losses, loss_dict = self.dense_head.get_loss()
         if 'loss_box_of_pts_sprs' in batch_dict.keys():
             loss_dict['loss_box_of_pts_sprs'] = batch_dict['loss_box_of_pts_sprs']

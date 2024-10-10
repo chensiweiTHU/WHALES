@@ -241,8 +241,8 @@ test_pipeline = [
 # please keep its loading function consistent with test_pipeline (e.g. client)
 eval_pipeline = test_pipeline
 data = dict(
-    samples_per_gpu=4,
-    workers_per_gpu=4, #调试时用0
+    samples_per_gpu=16,
+    workers_per_gpu=16, #调试时用0
     train=dict(
         type=dataset_type,
         data_root=data_root,

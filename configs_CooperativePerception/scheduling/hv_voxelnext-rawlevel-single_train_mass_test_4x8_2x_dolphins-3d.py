@@ -1,7 +1,6 @@
-point_cloud_range = [-100, -100, -5, 100, 100, 3]
-voxel_size = [0.5, 0.5, 8]
+point_cloud_range = [-50, -50, -5, 50, 50, 3]
 _base_ = [
-    '../_base_/models/voxelnext_100m.py',
+    '../_base_/models/voxelnext.py',
     # '../_base_/datasets/dolphins-3d.py',
     '../_base_/schedules/schedule_2x.py',
     '../_base_/default_runtime.py',
@@ -30,15 +29,7 @@ train_pipeline = [
         load_dim=4,
         use_dim=4,
         file_client_args=file_client_args),
-    dict(
-        type='LoadPointsFromCooperativeAgents',
-        coord_type='LIDAR',
-        load_dim=4, use_dim=4,
-        file_client_args=file_client_args
-        ),
     dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
-    dict(type='RawlevelPointCloudFusion'),
-    # dict(type='ObjectSample', db_sampler=db_sampler),
     dict(
         type='GlobalRotScaleTrans',
         rot_range=[-0.3925, 0.3925],
@@ -59,23 +50,18 @@ test_pipeline = [
         load_dim=4,
         use_dim=4,
         file_client_args=file_client_args),
+    dict(type='AgentScheduling',
+        mode="unicast",
+        submode="mass", 
+        basic_data_limit=6e6
+        ),
     dict(
         type='LoadPointsFromCooperativeAgents',
         coord_type='LIDAR',
         load_dim=4, use_dim=4,
         file_client_args=file_client_args
         ),
-    # dict(type='LoadAnnotations3D'),
-    dict(type='AgentScheduling',
-        mode="random", 
-        submode="closest", 
-        basic_data_limit=6e6
-        ),
     dict(type='RawlevelPointCloudFusion'),
-    # dict(
-    #     type='LoadPointsFromMultiSweeps',
-    #     sweeps_num=10,
-    #     file_client_args=file_client_args),
     dict(
         type='MultiScaleFlipAug3D',
         img_scale=(1333, 800),
@@ -115,19 +101,19 @@ eval_pipeline = [
         load_dim=4,
         use_dim=4,
         file_client_args=file_client_args),
+    dict(type='AgentScheduling',
+        mode="unicast",
+        submode="mass", 
+        basic_data_limit=6e6
+        ),
     dict(
         type='LoadPointsFromCooperativeAgents',
         coord_type='LIDAR',
         load_dim=4, use_dim=4,
         file_client_args=file_client_args
         ),
-    dict(type='LoadAnnotations3D'),
-    dict(type='AgentScheduling',
-        mode="unicast", 
-        submode="random", 
-        basic_data_limit=6e6
-        ),
     dict(type='RawlevelPointCloudFusion'),
+    dict(type='LoadAnnotations3D'),
     # dict(
     #     type='LoadPointsFromMultiSweeps',
     #     sweeps_num=10,
@@ -149,8 +135,8 @@ eval_pipeline = [
 ]
 # model settings
 data = dict(
-    samples_per_gpu=4,
-    workers_per_gpu=4, #调试时用0
+    samples_per_gpu=0,
+    workers_per_gpu=0, #调试时用0
     train=dict(
         type=dataset_type,
         data_root=data_root,
@@ -161,12 +147,7 @@ data = dict(
         test_mode=False,
         # we use box_type_3d='LiDAR' in kitti and nuscenes dataset
         # and box_type_3d='Depth' in sunrgbd and scannet dataset.
-        box_type_3d='LiDAR',
-        class_range={
-                "Vehicle": 100,
-                "Pedestrian": 80,
-                "Cyclist": 80,
-                }),
+        box_type_3d='LiDAR'),
     val=dict(
         type=dataset_type,
         data_root=data_root,
@@ -175,12 +156,7 @@ data = dict(
         classes=class_names,
         modality=input_modality,
         test_mode=True,
-        box_type_3d='LiDAR',
-        class_range={
-                "Vehicle": 100,
-                "Pedestrian": 80,
-                "Cyclist": 80,
-                }),
+        box_type_3d='LiDAR'),
     test=dict(
         type=dataset_type,
         data_root=data_root,
@@ -189,9 +165,4 @@ data = dict(
         classes=class_names,
         modality=input_modality,
         test_mode=True,
-        box_type_3d='LiDAR',
-        class_range={
-                "Vehicle": 100,
-                "Pedestrian": 80,
-                "Cyclist": 80,
-                }))
+        box_type_3d='LiDAR'))

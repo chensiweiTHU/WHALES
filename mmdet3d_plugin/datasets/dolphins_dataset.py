@@ -144,6 +144,7 @@ class DolphinsDataset(Custom3DDataset):
                 "Cyclist": 40,
                 },
                 time_delay = 0,
+                del_rsus = False,
         ):
         self.load_interval = load_interval
         self.use_valid_flag = use_valid_flag
@@ -156,6 +157,9 @@ class DolphinsDataset(Custom3DDataset):
             box_type_3d=box_type_3d,
             filter_empty_gt=filter_empty_gt,
             test_mode=test_mode)
+        if del_rsus:
+            self.del_rsu()
+        self.del_rsus = del_rsus
         self.token_map=dict()
         for i in range(len(self.data_infos)):
             self.token_map[self.data_infos[i]['token']] = i
@@ -180,7 +184,14 @@ class DolphinsDataset(Custom3DDataset):
         self.analize_annotations()
         self.history_results = defaultdict(dict)
         # print(self.pipeline)
-
+    def del_rsu(self):
+        new_data_infos = []
+        for i in range(len(self.data_infos)):
+            if self.data_infos[i]['veh_or_rsu'] == 'vehicle':
+                new_data_infos.append(self.data_infos[i])
+        print('delete {} rsu samples'.format(len(self.data_infos)-len(new_data_infos)))
+        self.data_infos = new_data_infos
+                
     def get_cat_ids(self, idx):
         """Get category distribution of single scene.
 
@@ -294,7 +305,10 @@ class DolphinsDataset(Custom3DDataset):
                 - ann_info (dict): Annotation info.
         """
         info = self.data_infos[index]
-        agent_num = info['sample_info']['vehicle_num']+1
+        if self.del_rsus:
+            agent_num = info['sample_info']['vehicle_num']
+        else:
+            agent_num = info['sample_info']['vehicle_num']+1
         # standard protocal modified from SECOND.Pytorch
         input_dict = dict(
             sample_idx=info['token'],
@@ -375,6 +389,7 @@ class DolphinsDataset(Custom3DDataset):
         input_dict['veh_token'] = veh_token
         input_dict['ego_velocity'] = info['gt_velocity'][int(veh_token)]
         input_dict['veh_or_rsu'] = info['veh_or_rsu']
+        input_dict['agent_num'] = agent_num
         if cooperative:
             cooperative_ids = []
             cooperative_veh_tokens = []

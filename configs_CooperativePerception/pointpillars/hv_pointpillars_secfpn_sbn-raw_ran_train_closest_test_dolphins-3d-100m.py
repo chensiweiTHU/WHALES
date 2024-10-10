@@ -1,7 +1,6 @@
 point_cloud_range = [-100, -100, -5, 100, 100, 3]
-voxel_size = [0.5, 0.5, 8]
 _base_ = [
-    '../_base_/models/voxelnext_100m.py',
+    '../_base_/models/hv_pointpillars_fpn_dolphins.py',
     # '../_base_/datasets/dolphins-3d.py',
     '../_base_/schedules/schedule_2x.py',
     '../_base_/default_runtime.py',
@@ -22,6 +21,43 @@ input_modality = dict(
     use_map=False,
     use_external=False)
 file_client_args = dict(backend='disk')
+voxel_size = [0.5, 0.5, 8]
+# model settings
+model = dict(
+    pts_voxel_layer=dict(
+        max_num_points=32,
+        point_cloud_range=[-100, -100, -5, 100, 100, 3],
+        voxel_size=voxel_size,
+        max_voxels=(60000, 80000)),
+    pts_neck=dict(
+        _delete_=True,
+        type='SECONDFPN',
+        norm_cfg=dict(type='naiveSyncBN2d', eps=1e-3, momentum=0.01),
+        in_channels=[64, 128, 256],
+        upsample_strides=[1, 2, 4],
+        out_channels=[128, 128, 128]),
+    pts_bbox_head=dict(
+        in_channels=384,
+        feat_channels=384,
+        anchor_generator=dict(
+            _delete_=True,
+            type='AlignedAnchor3DRangeGenerator',
+            ranges=[
+                [-99.2, -99.2, -1.8, 99.2, 99.2, -1.4],
+                [-99.2, -99.2, -1.7, 99.2, 99.2, -1.3],
+                [-99.2, -99.2, -2, 99.2, 99.2, -1.6],
+            ],
+            sizes=[
+                # [2.5, 1.1, 0.9],  # car                
+                # [0.30, 0.30, 0.9],  # pedestrian
+                # [1.05, 0.40, 0.80],  # bicycle
+                [5.0, 2.2, 1.8],  # car               
+                [0.60, 0.60, 1.80],  # pedestrian
+                [2.1, 0.80, 1.60],  # bicycle
+            ],
+            custom_values=[0, 0],
+            rotations=[0, 1.57],
+            reshape_out=True)))
 
 train_pipeline = [
     dict(
@@ -30,6 +66,11 @@ train_pipeline = [
         load_dim=4,
         use_dim=4,
         file_client_args=file_client_args),
+    dict(type='AgentScheduling',
+        mode="unicast",
+        submode="random", 
+        basic_data_limit=6e6
+        ),
     dict(
         type='LoadPointsFromCooperativeAgents',
         coord_type='LIDAR',
@@ -59,23 +100,18 @@ test_pipeline = [
         load_dim=4,
         use_dim=4,
         file_client_args=file_client_args),
+    dict(type='AgentScheduling',
+        mode="unicast",
+        submode="closest", 
+        basic_data_limit=6e6
+        ),
     dict(
         type='LoadPointsFromCooperativeAgents',
         coord_type='LIDAR',
         load_dim=4, use_dim=4,
         file_client_args=file_client_args
         ),
-    # dict(type='LoadAnnotations3D'),
-    dict(type='AgentScheduling',
-        mode="random", 
-        submode="closest", 
-        basic_data_limit=6e6
-        ),
     dict(type='RawlevelPointCloudFusion'),
-    # dict(
-    #     type='LoadPointsFromMultiSweeps',
-    #     sweeps_num=10,
-    #     file_client_args=file_client_args),
     dict(
         type='MultiScaleFlipAug3D',
         img_scale=(1333, 800),
@@ -115,6 +151,11 @@ eval_pipeline = [
         load_dim=4,
         use_dim=4,
         file_client_args=file_client_args),
+    dict(type='AgentScheduling',
+        mode="unicast",
+        submode="closest", 
+        basic_data_limit=6e6
+        ),
     dict(
         type='LoadPointsFromCooperativeAgents',
         coord_type='LIDAR',
@@ -122,11 +163,6 @@ eval_pipeline = [
         file_client_args=file_client_args
         ),
     dict(type='LoadAnnotations3D'),
-    dict(type='AgentScheduling',
-        mode="unicast", 
-        submode="random", 
-        basic_data_limit=6e6
-        ),
     dict(type='RawlevelPointCloudFusion'),
     # dict(
     #     type='LoadPointsFromMultiSweeps',
@@ -175,7 +211,7 @@ data = dict(
         classes=class_names,
         modality=input_modality,
         test_mode=True,
-        box_type_3d='LiDAR',
+        box_type_3d='LiDAR',        
         class_range={
                 "Vehicle": 100,
                 "Pedestrian": 80,
@@ -189,9 +225,10 @@ data = dict(
         classes=class_names,
         modality=input_modality,
         test_mode=True,
-        box_type_3d='LiDAR',
+        box_type_3d='LiDAR',        
         class_range={
                 "Vehicle": 100,
                 "Pedestrian": 80,
                 "Cyclist": 80,
                 }))
+# evaluation = dict(interval=6, metric='bbox')

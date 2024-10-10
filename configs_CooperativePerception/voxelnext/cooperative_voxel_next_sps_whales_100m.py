@@ -254,7 +254,12 @@ data = dict(
         test_mode=False,
         # we use box_type_3d='LiDAR' in kitti and nuscenes dataset
         # and box_type_3d='Depth' in sunrgbd and scannet dataset.
-        box_type_3d='LiDAR'),
+        box_type_3d='LiDAR',
+        class_range={
+                "Vehicle": 100,
+                "Pedestrian": 80,
+                "Cyclist": 80,
+                }),
     val=dict(
         type=dataset_type,
         data_root=data_root,
@@ -263,7 +268,12 @@ data = dict(
         classes=class_names,
         modality=input_modality,
         test_mode=True,
-        box_type_3d='LiDAR'),
+        box_type_3d='LiDAR',
+        class_range={
+                "Vehicle": 100,
+                "Pedestrian": 80,
+                "Cyclist": 80,
+                }),
     test=dict(
         type=dataset_type,
         data_root=data_root,
@@ -272,7 +282,12 @@ data = dict(
         classes=class_names,
         modality=input_modality,
         test_mode=True,
-        box_type_3d='LiDAR'))
+        box_type_3d='LiDAR',
+        class_range={
+                "Vehicle": 100,
+                "Pedestrian": 80,
+                "Cyclist": 80,
+                }),)
 
 evaluation = dict(
     interval=6,

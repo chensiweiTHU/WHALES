@@ -1,5 +1,4 @@
 point_cloud_range = [-100, -100, -5, 100, 100, 3]
-voxel_size = [0.5, 0.5, 8]
 _base_ = [
     '../_base_/models/voxelnext_100m.py',
     # '../_base_/datasets/dolphins-3d.py',
@@ -31,7 +30,6 @@ train_pipeline = [
         use_dim=4,
         file_client_args=file_client_args),
     dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
-    # dict(type='ObjectSample', db_sampler=db_sampler),
     dict(
         type='GlobalRotScaleTrans',
         rot_range=[-0.3925, 0.3925],
@@ -114,8 +112,8 @@ eval_pipeline = [
         load_dim=4, use_dim=4,
         file_client_args=file_client_args
         ),
-    dict(type='LoadAnnotations3D'),
     dict(type='RawlevelPointCloudFusion'),
+    dict(type='LoadAnnotations3D'),
     # dict(
     #     type='LoadPointsFromMultiSweeps',
     #     sweeps_num=10,
