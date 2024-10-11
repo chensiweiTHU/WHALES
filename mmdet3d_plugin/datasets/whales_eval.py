@@ -92,7 +92,8 @@ def _get_box_class_field(eval_boxes: EvalBoxes) -> str:
             break
     if isinstance(box, DetectionBox):
         class_field = 'detection_name'
-    # To Do: Add TrackingBox
+    elif isinstance(box, TrackingBox):
+        class_field = 'tracking_name'
     else:
         raise Exception('Error: Invalid box type: %s' % box)
 
@@ -172,15 +173,29 @@ class DetectionBox(EvalBox):
                    detection_score=-1.0 if 'detection_score' not in content else float(content['detection_score']),
                    attribute_name=content['attribute_name'])
 from mmdet3d.datasets import WhalesDataset
-from tools.data_converter.whales import Whales
+from tools.data_converter.whales import whales
 class WhalesEval:
     """
-    We calculate mAP and NDS similar to the nuScenes, but we do not have attributes.
-    So we set mAAE to 1 for all samples. Communication cost is calculated in addition for cooperative perception.
+    This is the official nuScenes detection evaluation code.
+    Results are written to the provided output_dir.
+
+    nuScenes uses the following detection metrics:
+    - Mean Average Precision (mAP): Uses center-distance as matching criterion; averaged over distance thresholds.
+    - True Positive (TP) metrics: Average of translation, velocity, scale, orientation and attribute errors.
+    - nuScenes Detection Score (NDS): The weighted sum of the above.
+
+    Here is an overview of the functions in this method:
+    - init: Loads GT annotations and predictions stored in JSON format and filters the boxes.
+    - run: Performs evaluation and dumps the metric data to disk.
+    - render: Renders various plots and dumps to disk.
+
+    We assume that:
+    - Every sample_token is given in the results, although there may be not predictions for that sample.
+
     Please see https://www.nuscenes.org/object-detection for more details.
     """
     def __init__(self,
-                 whales: Whales,
+                 whales: whales,
                  whales_dataset: WhalesDataset,
                  config: DetectionConfig,
                  result_path: str,
@@ -261,7 +276,7 @@ class WhalesEval:
 
         self.sample_tokens = self.gt_boxes.sample_tokens
 
-    def add_center_dist(self, whales: Whales,
+    def add_center_dist(self, whales: whales,
                         eval_boxes: EvalBoxes, mode="pointpillars"):
         """
         Adds the cylindrical (xy) center distance from ego vehicle to each box.
@@ -344,7 +359,7 @@ class WhalesEval:
 
         return all_results, meta
 
-    def load_gt(self, dolph: Whales, eval_split: str, box_cls,  verbose: bool = False) -> EvalBoxes:
+    def load_gt(self, whale: whales, eval_split: str, box_cls,  verbose: bool = False) -> EvalBoxes:
         """
         Loads ground truth boxes from DB.
         :param nusc: A NuScenes instance.
@@ -358,7 +373,7 @@ class WhalesEval:
         #     attribute_map = {a['token']: a['name'] for a in nusc.attribute}
 
         if verbose:
-            print('Loading annotations for {} split from nuScenes version: {}'.format(eval_split, dolph.version))
+            print('Loading annotations for {} split from nuScenes version: {}'.format(eval_split, whale.version))
         # Read out all sample_tokens in DB.
         # sample_tokens_all = [s['token'] for s in nusc.sample]
         # assert len(sample_tokens_all) > 0, "Error: Database has no samples!"
@@ -385,7 +400,7 @@ class WhalesEval:
 
         if eval_split == 'test':
             # Check that you aren't trying to cheat :).
-            assert len(dolph.sample_annotation) > 0, \
+            assert len(whale.sample_annotation) > 0, \
                 'Error: You are trying to evaluate on the test set but you do not have the annotations!'
 
         # sample_tokens = []
@@ -401,17 +416,17 @@ class WhalesEval:
         # Load annotations and filter predictions and annotations.
         tracking_id_set = set()
         sample_tokens_all = []
-        for scene in dolph.scenes:
-            steps = len(dolph.frames[scene])
-            interval = dolph.config[scene]['world']['save_interval']
+        for scene in whale.scenes:
+            steps = len(whale.frames[scene])
+            interval = whale.config[scene]['world']['save_interval']
             time_interval = 0.1 * interval
-            vehicle_num = dolph.scenen[scene]['vehicle_num']
+            vehicle_num = whale.scenen[scene]['vehicle_num']
             for step in range(1,steps+1):
                 for v_id in range(vehicle_num+1):
                     sample_token = f'{scene}_{step*interval}_{v_id}'
                     sample_tokens_all.append(sample_token)
                     sample_boxes = []
-                    for sample_annotation in dolph.frames[scene][f'{scene}_{step*interval}']['sample_annotation']:
+                    for sample_annotation in whale.frames[scene][f'{scene}_{step*interval}']['sample_annotation']:
                         # boxes = list(self.get_box(curr_anno)) 
                         if box_cls == DetectionBox:
                             # Get label name in detection task and filter unused labels.
@@ -419,12 +434,13 @@ class WhalesEval:
                             if detection_name is None:
                                 continue
                             velocity = np.array(
-                                    dolph.box_velocity(scene, interval, step, sample_annotation, time_interval)[:2]) 
+                                    whale.box_velocity(scene, interval, step, sample_annotation, time_interval)[:2]) 
+                            size = [2*sample_annotation['size'][0],2*sample_annotation['size'][1], 2*sample_annotation['size'][2]]
                             sample_boxes.append(
                                 box_cls(
                                     sample_token=sample_token,
                                     translation=sample_annotation['location'],
-                                    size=sample_annotation['size'],
+                                    size=size,
                                     rotation=sample_annotation['rotation'],
                                     velocity=velocity,
                                     num_pts=1000,
@@ -451,7 +467,7 @@ class WhalesEval:
                                     translation=sample_annotation['translation'],
                                     size=sample_annotation['size'],
                                     rotation=sample_annotation['rotation'],
-                                    velocity=dolph.box_velocity(sample_annotation['token'])[:2],
+                                    velocity=whale.box_velocity(sample_annotation['token'])[:2],
                                     num_pts=sample_annotation['num_lidar_pts'] + sample_annotation['num_radar_pts'],
                                     tracking_id=tracking_id,
                                     tracking_name=tracking_name,

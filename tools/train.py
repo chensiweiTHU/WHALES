@@ -233,12 +233,13 @@ def main():
             if hasattr(datasets[0], 'PALETTE') else None)
     # add an attribute for visualization convenience
     model.CLASSES = datasets[0].CLASSES
-    get_statistics = False
+    get_statistics =  False
     quantisize = False
     if get_statistics:
         import numpy as np
         point_len = []
         infra_point_len=[]
+        gt_boxes_of_cars = []
         for i in range(len(datasets[0])):
             data = datasets[0][i]
             if quantisize:
@@ -257,9 +258,10 @@ def main():
         print('mean infra point length:',np.mean(infra_point_len))
         np.save('veh_point_len.npy',point_len)
         np.save('infra_point_len.npy',infra_point_len)
-        # import matplotlib.pyplot as plt
-        # plt.hist(infra_point_len, bins=100)
-        # plt.show()
+        import matplotlib.pyplot as plt
+        plt.hist(infra_point_len, bins=100)
+        plt.show()
+        input("Press Enter to continue...")
     train_model(
         model,
         datasets,

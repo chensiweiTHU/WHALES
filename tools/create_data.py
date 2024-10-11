@@ -7,7 +7,7 @@ from data_converter import kitti_converter as kitti
 from data_converter import lyft_converter as lyft_converter
 from data_converter import nuscenes_converter as nuscenes_converter
 from data_converter.create_gt_database import create_groundtruth_database
-from tools.data_converter import whales_converter as whales_converter
+from data_converter import whales_converter as whales_converter
 
 def kitti_data_prep(root_path, info_prefix, version, out_dir):
     """Prepare data related to Kitti dataset.
@@ -44,8 +44,6 @@ def kitti_data_prep(root_path, info_prefix, version, out_dir):
         with_mask=(version == 'mask'))
 
 def whales_data_prep(root_path, info_prefix, version, dataset_name, out_dir, max_sweeps=10):
-
-
     info_train_path = osp.join(root_path, f'{info_prefix}_infos_train.pkl')
     info_val_path = osp.join(root_path, f'{info_prefix}_infos_val.pkl')
     # if osp.exists(info_train_path):
@@ -54,10 +52,10 @@ def whales_data_prep(root_path, info_prefix, version, dataset_name, out_dir, max
     whales_converter.create_whales_infos(
             root_path, info_prefix, version=version, max_sweeps=max_sweeps)
 
-    # whales_converter.export_2d_annotation(
-    #     root_path, info_train_path, version=version)
-    # whales_converter.export_2d_annotation(
-    #     root_path, info_val_path, version=version)
+    whales_converter.export_2d_annotation(
+        root_path, info_train_path, version=version)
+    whales_converter.export_2d_annotation(
+        root_path, info_val_path, version=version)
     create_groundtruth_database(dataset_name, root_path, info_prefix,f'{out_dir}/{info_prefix}_infos_train.pkl',
                                 )
 

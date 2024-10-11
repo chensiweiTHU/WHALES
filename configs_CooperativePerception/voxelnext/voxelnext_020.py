@@ -10,7 +10,7 @@ _base_ = [
 
 dataset_type = 'WhalesDataset'
 data_root = 'data/whales/'
-# Input modality for Whales dataset, this is consistent with the submission
+# Input modality for Whales2 dataset, this is consistent with the submission
 # format which requires the information in input_modality.
 input_modality = dict(
     use_lidar=True,

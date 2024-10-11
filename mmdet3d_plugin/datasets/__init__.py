@@ -6,7 +6,9 @@ from mmdet3d.datasets.custom_3d_seg import Custom3DSegDataset
 from mmdet3d.datasets.kitti_dataset import KittiDataset
 from mmdet3d.datasets.kitti_mono_dataset import KittiMonoDataset
 from mmdet3d.datasets.lyft_dataset import LyftDataset
+from .nuscenes_dataset import NuScenesDataset
 from .whales_dataset import WhalesDataset
+from .v2x_dataset import V2XDataset
 from .opencood_dataset import OpencoodDataset
 from mmdet3d.datasets.nuscenes_mono_dataset import NuScenesMonoDataset
 # yapf: disable
@@ -39,5 +41,5 @@ __all__ = [
     'Custom3DDataset', 'Custom3DSegDataset', 'LoadPointsFromMultiSweeps',
     'WaymoDataset', 'BackgroundPointsFilter', 'VoxelBasedPointSampler',
     'get_loading_pipeline', 'RandomDropPointsColor', 'RandomJitterPoints',
-    'ObjectNameFilter', 'OpencoodDataset'
+    'ObjectNameFilter', 'V2XDataset', 'OpencoodDataset'
 ]

@@ -98,6 +98,7 @@ def create_kitti_info_file(data_path,
         save_path (str): Path to save the info file.
         relative_path (bool): Whether to use relative path.
     """
+    print(data_path)
     imageset_folder = Path(data_path) / 'ImageSets'
     train_img_ids = _read_imageset_file(str(imageset_folder / 'train.txt'))
     val_img_ids = _read_imageset_file(str(imageset_folder / 'val.txt'))
@@ -347,20 +348,23 @@ def export_2d_annotation(root_path, info_path, mono3d=True):
     coco_2d_dict = dict(annotations=[], images=[], categories=cat2Ids)
     from os import path as osp
     for info in mmcv.track_iter_progress(kitti_infos):
-        coco_infos = get_2d_boxes(info, occluded=[0, 1, 2, 3], mono3d=mono3d)
-        (height, width,
-         _) = mmcv.imread(osp.join(root_path,
-                                   info['image']['image_path'])).shape
-        coco_2d_dict['images'].append(
-            dict(
-                file_name=info['image']['image_path'],
-                id=info['image']['image_idx'],
-                Tri2v=info['calib']['Tr_imu_to_velo'],
-                Trv2c=info['calib']['Tr_velo_to_cam'],
-                rect=info['calib']['R0_rect'],
-                cam_intrinsic=info['calib']['P2'],
-                width=width,
-                height=height))
+        try:
+            coco_infos = get_2d_boxes(info, occluded=[0, 1, 2, 3], mono3d=mono3d)
+            (height, width,
+                _) = mmcv.imread(osp.join(root_path,
+                                        info['image']['image_path'])).shape
+            coco_2d_dict['images'].append(
+                dict(
+                    file_name=info['image']['image_path'],
+                    id=info['image']['image_idx'],
+                    Tri2v=info['calib']['Tr_imu_to_velo'],
+                    Trv2c=info['calib']['Tr_velo_to_cam'],
+                    rect=info['calib']['R0_rect'],
+                    cam_intrinsic=info['calib']['P2'],
+                    width=width,
+                    height=height))
+        except:
+            print('error')
         for coco_info in coco_infos:
             if coco_info is None:
                 continue

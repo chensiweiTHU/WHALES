@@ -13,7 +13,7 @@ from typing import List, Tuple, Union
 from mmdet3d.core.bbox.box_np_ops import points_cam2img
 from mmdet3d_plugin.datasets.whales_dataset import WhalesDataset
 
-from tools.data_converter.whales import Whales
+from data_converter.whales import Whales
 
 whales_categories = ('Vehicle', 'Pedestrian', 'Cyclist')
 
@@ -37,20 +37,20 @@ def create_whales_infos(root_path,
     all_train_infos = []
     all_val_infos = []
 
-    whales = Whales(dataroot=root_path, verbose=True)
+    whale = Whales(dataroot=root_path, verbose=True)
 
-    all_samples = list(whales.frames.keys())
+    all_samples = list(whale.frames.keys())
     num_train = int(len(all_samples) * 0.8)
 
     train_scenes = all_samples[:num_train]
     val_scenes = all_samples[num_train:]
 
     # filter existing scenes.
-    for scene in mmcv.track_iter_progress(whales.scenes):
+    for scene in mmcv.track_iter_progress(whale.scenes):
         # print(scene)
-        tot_vehicle_num = whales.scenen[scene]['vehicle_num']
+        tot_vehicle_num = whale.scenen[scene]['vehicle_num']
         
-        save_interval = int(whales.config[scene]["world"]['save_interval'])
+        save_interval = int(whale.config[scene]["world"]['save_interval'])
         
         steps = 0
         scene_files = os.listdir(osp.join(root_path, scene))
@@ -64,7 +64,7 @@ def create_whales_infos(root_path,
         for i in range(steps):
             for index in vehicle_indices:
                 train_infos, val_infos = _fill_trainval_infos(
-                    whales, train_scenes, val_scenes, root_path, scene, index, save_interval, i+1, max_sweeps=max_sweeps)
+                    whale, train_scenes, val_scenes, root_path, scene, index, save_interval, i+1, max_sweeps=max_sweeps)
 
                 all_train_infos.extend(train_infos)
                 all_val_infos.extend(val_infos)
@@ -97,7 +97,7 @@ def _fill_trainval_infos(whales:Whales,
     """Generate the train/val infos from the raw data.
 
     Args:
-        whales (:obj:`Whales`): Dataset class in the whales dataset.
+        whales (:obj:`whales`): Dataset class in the whales dataset.
         train_scenes (list[str]): Basic information of training scenes.
         val_scenes (list[str]): Basic information of validation scenes.
         test (bool, optional): Whether use the test mode. In test mode, no
@@ -115,8 +115,8 @@ def _fill_trainval_infos(whales:Whales,
     time_interval = 0.1 * save_interval
 
     # for sample in mmcv.track_iter_progress(whales.frames):
-    boxes, cam_intrinsic, annotations, vehicle_locations, vehicle_rotations = whales.get_sample_data(step, sample, vehicle_index, save_interval,\
-                                                                                        use_flat_vehicle_coordinates=True)
+    boxes, cam_intrinsic, annotations, vehicle_locations, vehicle_rotations = whales.get_sample_data(\
+        step, sample, vehicle_index, save_interval, use_flat_vehicle_coordinates=True)
     if vehicle_index< whales.scenen[sample]['vehicle_num']-1:
         lidar_path = osp.join(root_path, sample, str(step * save_interval), 'vehicle' + str(vehicle_index), 'point_cloud.bin')
     else:
@@ -126,8 +126,8 @@ def _fill_trainval_infos(whales:Whales,
     timestamp = step * time_interval
     sample_data = whales.sample[whales._token2ind['sample'][token]] 
     rotation = sample_data['sample_annotation'][vehicle_index]['rotation']
-    veh_or_rsu = 'vehicle' if vehicle_index < whales.scenen[sample]['vehicle_num']-1 else 'rsu'
-
+    veh_or_rsu = 'vehicle' if vehicle_index < whales.scenen[sample]['vehicle_num'] else 'rsu'
+    # 错了，没有-1
     info = {
         'lidar_path': lidar_path,
         'num_features': 5,
@@ -150,7 +150,7 @@ def _fill_trainval_infos(whales:Whales,
     l2e_r_mat = Quaternion(l2e_r).rotation_matrix
     e2g_r_mat = Quaternion(e2g_r).rotation_matrix
 
-    # obtain 6 images' information per frame
+    # obtain 4 images' information per frame
     camera_types = [
         'camera',
         'camera_b',
@@ -158,7 +158,6 @@ def _fill_trainval_infos(whales:Whales,
         'camera_r'
     ]
     agent_str = 'vehicle' + str(vehicle_index) if veh_or_rsu == 'vehicle' else 'rsu'
-    "different from nuscenes, we have 4 cameras and we do not use this information"
     for cam in camera_types:
         cam_path = osp.join(root_path, sample, str(step * save_interval), agent_str, cam + '.png' )
         cam_info = obtain_sensor2top(whales, vehicle_locations, cam_path, l2e_t, l2e_r_mat, e2g_t, e2g_r_mat, timestamp, vehicle_index, cam)
@@ -247,7 +246,7 @@ def obtain_sensor2top(whales,
     """Obtain the info with RT matric from general sensor to Top LiDAR.
 
     Args:
-        whales (class): Dataset class in the Whales dataset.
+        whales (class): Dataset class in the whales dataset.
         sensor_token (str): Sample data token corresponding to the
             specific sensor type.
         l2e_t (np.ndarray): Translation from lidar to ego in shape (1, 3).

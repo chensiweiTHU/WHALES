@@ -10,7 +10,7 @@ class_names = [
 ]
 dataset_type = 'WhalesDataset'
 data_root = 'data/whales/'
-# Input modality for Whales dataset, this is consistent with the submission
+# Input modality for Whales2 dataset, this is consistent with the submission
 # format which requires the information in input_modality.
 input_modality = dict(
     use_lidar=True,
@@ -225,12 +225,12 @@ model = dict(
                 # [-49.6, -49.6, -1.763965, 49.6, 49.6, -1.763965],
             ],
             sizes=[
-                [2.5, 1.1, 0.9],  # car
+                [5.0, 2.2, 1.8],  # car
                 # [2.4560939, 6.73778078, 2.73004906],  # truck
                 # [2.87427237, 12.01320693, 3.81509561],  # trailer
                 
-                [0.30, 0.30, 0.9],  # pedestrian
-                [1.05, 0.40, 0.80],  # bicycle
+                [0.60, 0.60, 1.80],  # pedestrian
+                [2.1, 0.80, 1.60],  # bicycle
                 # [0.39694519, 0.40359262, 1.06232151],  # traffic_cone
                 # [2.49008838, 0.48578221, 0.98297065],  # barrier
             ],

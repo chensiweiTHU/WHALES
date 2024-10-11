@@ -1,5 +1,3 @@
-# We implement opencood dataset in mmdet3d style
-# by Siwei Chen
 import opencood
 from mmdet.datasets import DATASETS
 import opencood.hypes_yaml.yaml_utils as yaml_utils
