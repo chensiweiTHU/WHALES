@@ -94,7 +94,7 @@ def convert_track_label(track_results_path, output_path, dic, extended_range=Non
             list_lines_filt = []
             for line in list_lines:
                 line = line.replace("Truck", "Car")
-                line = line.replace("Van", "Car")
+                line = line.replace("Van", "")
                 line = line.replace("Bus", "Car")
                 i = line.strip().split(' ')
                 corners = get_lidar_3d_8points([float(i[12]), float(i[11]), float(i[10])], [float(i[17]), float(i[18]), float(i[19])], float(i[20]))

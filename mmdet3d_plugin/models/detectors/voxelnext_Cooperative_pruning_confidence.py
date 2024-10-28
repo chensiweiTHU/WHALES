@@ -17,6 +17,8 @@ import torch.nn as nn
 import numpy as np
 # from mmdet3d.core.bbox import LiDARInstance3DBoxes
 from .import VoxelNeXtCoopertive
+from mmdet3d.core import (Box3DMode, Coord3DMode, bbox3d2result,
+                          merge_aug_bboxes_3d, show_result)
 
 class PointQuantization(object):
     def __init__(self, voxel_size, quantize_coords_range, q_delta=1.6e-5):
@@ -41,11 +43,14 @@ class PointQuantization(object):
 class VoxelNeXtCoopertivePruningConfidence(VoxelNeXtCoopertive):
     """this is the cooperaivte version of VoxelNeXt, 
     which is used to fuse the results of multiple agents in DAIR-V2X dataset."""
-    def __init__(self, pts_voxel_layer,pts_voxel_encoder,
-                  backbone_3d, fusion_channels, dense_head, post_processing, single=False,proj_first=False,raw=False, pruning=None, quant_levels=[[0.04, 0.04, 0.0625],[0.16, 0.16, 0.25]], **kwargs ):
+    def __init__(self, pts_voxel_layer,pts_voxel_encoder,\
+                  backbone_3d, fusion_channels, dense_head, post_processing, single=False,proj_first=False,raw=False, pruning=None, \
+                  quant_levels=[[0.04, 0.04, 0.0625],[0.16, 0.16, 0.25]], \
+                    train_cfg = None, test_cfg = None, **kwargs ):
                   #num_class, dataset):
-        super(VoxelNeXtCoopertivePruningConfidence,self).__init__(pts_voxel_layer,pts_voxel_encoder,
-                  backbone_3d, fusion_channels, dense_head, post_processing, single=single,proj_first=proj_first,raw=raw, **kwargs)
+        super(VoxelNeXtCoopertivePruningConfidence,self).__init__(pts_voxel_layer,pts_voxel_encoder,\
+                  backbone_3d, fusion_channels, dense_head, post_processing, single=single,\
+                  proj_first=proj_first,raw=raw, train_cfg = train_cfg, test_cfg= test_cfg, **kwargs)
         if pruning is not None:
             self.pruning = builder.build_backbone(pruning) # we put the pruning block in the backbone
         # self.pruning.bound_backbone(self.inf_backbone_3d)
@@ -54,7 +59,11 @@ class VoxelNeXtCoopertivePruningConfidence(VoxelNeXtCoopertive):
         self.pointQuantization = []
         for quant_level in self.quant_levels:
             self.pointQuantization.append(PointQuantization(quant_level,self.point_cloud_range))
-            
+
+    def init_weights(self):
+        """Initialize model weights."""
+        super(VoxelNeXtCoopertivePruningConfidence, self).init_weights()
+
     def quantisize(self,points_with_levels,index):
         # quantisized_points = []
         # for i,points in enumerate(points_with_levels):
@@ -105,11 +114,11 @@ class VoxelNeXtCoopertivePruningConfidence(VoxelNeXtCoopertive):
             torch.cat([b.tensor, torch.zeros(max_box_num - len(b), box_dim).to(b.tensor.device)])
             for b in gt_bboxes_3d
         ]).to(device)
-        # # get first 7 dims
+        # get first 7 dims
         "first filter out -1 labels in DAIR-V2X dataset by FFNet"
-        if len(self.dense_head.num_classes)>1:
+        if self.dense_head.num_classes[0]>1:
             for i,l in enumerate(gt_labels_3d):
-                gt_labels_3d[i][l == -1] = self.dense_head.num_class-1
+                gt_labels_3d[i][l == -1] = self.dense_head.num_classes[0]-1
         else:
             gt_bboxes_3d = [bboxes_3d_tensor[i][l != -1] for i,l in enumerate(gt_labels_3d)]
             gt_labels_3d = [l[l != -1] for l in gt_labels_3d]
@@ -162,7 +171,7 @@ class VoxelNeXtCoopertivePruningConfidence(VoxelNeXtCoopertive):
             infrastructure_points, img=infrastructure_img, img_metas=img_metas)
             
             #######use pruning to choose important points#########
-            "we use pruning to choose important points"
+            # "we use pruning to choose important points"
             voxel_feats_inf.update(gt_boxes=bboxes_3d_tensor)
             important_coords, unimportant_coords,important_voxels, unimportant_voxels, voxel_feats_inf = self.pruning(voxel_feats_inf)
             # "from coords to points"
@@ -170,7 +179,7 @@ class VoxelNeXtCoopertivePruningConfidence(VoxelNeXtCoopertive):
             # voxel_size = torch.tensor(self.pts_voxel_layer.voxel_size).to(device)
             compressed_points_inf = []
 
-            "voxels contains points in the voxel,first reshape into -1,4"
+            # "voxels contains points in the voxel,first reshape into -1,4"
             important_points = important_voxels.reshape(-1,important_voxels.shape[-1]) # Nxmax_points_per_voxelx4 -> N*max_points_per_voxelx4
             unimportant_points = unimportant_voxels.reshape(-1,unimportant_voxels.shape[-1]) # Nxmax_points_per_voxelx4 -> N*max_points_per_voxelx4
             for b_id in range(batch_size):   
@@ -214,13 +223,16 @@ class VoxelNeXtCoopertivePruningConfidence(VoxelNeXtCoopertive):
             #     pts_feats = self.feature_fusion_warp(pts_feats, pts_feats_inf, img_metas)
         batch_dict.update(pts_feats)
         output_dict = self.dense_head(batch_dict, img_metas) # img_feats for future use
-        losses, loss_dict = self.dense_head.get_loss()
+        if not self.training:
+            print('output_dict[0].keys():',output_dict[0][0].keys())
+        loss_inputs = [gt_bboxes_3d, gt_labels_3d, output_dict]
+        loss_dict = self.dense_head.loss(*loss_inputs)
         if 'loss_box_of_pts_sprs' in batch_dict.keys():
             loss_dict['loss_box_of_pts_sprs'] = batch_dict['loss_box_of_pts_sprs']
             loss_dict['loss_box_of_pts_sprs_pruning'] = loss_box_of_pts_sprs
         return loss_dict
     
-    def simple_test(self,points=None,img_metas=None,img=None,infrastructure_points=None,infrastructure_img=None,**kwargs):
+    def simple_test(self,points=None,img_metas=None,img=None,infrastructure_points=None,infrastructure_img=None,rescale=None,**kwargs):
         batch_size = len(points)
         "we cannot project points in test pipelines, so we need to project them here"
         if not self.single: 
@@ -303,21 +315,35 @@ class VoxelNeXtCoopertivePruningConfidence(VoxelNeXtCoopertive):
             pts_feats_inf = self.inf_backbone_3d(voxel_feats_inf)
             pts_feats = self.feature_fusion(pts_feats, pts_feats_inf, img_metas)
         batch_dict = pts_feats
-        output_dict = self.dense_head(batch_dict)
+        output_dict = self.dense_head(batch_dict, img_metas)
         # pred_dicts, recall_dicts = self.post_processing(batch_dict)
-        bbox_list = output_dict['final_box_dicts'] 
-        for i in range(len(bbox_list)):
-            bbox_list[i]['pred_labels'] = bbox_list[i]['pred_labels']-1
-        result_list = []
-        for i,bbox in enumerate(bbox_list):
-            result_list.append(dict())
-            result_box = dict()
-            result_box['boxes_3d'] = self.get_boxes(img_metas,bbox['pred_boxes'].cpu())
-            result_box['scores_3d'] = bbox['pred_scores'].cpu()
-            result_box['labels_3d'] = bbox['pred_labels'].cpu()
-            result_list[i]['pts_bbox'] = result_box
-            result_list[i]['img_metas'] = img_metas
-            result_list[i]['boxes_3d'] = result_box['boxes_3d']
-            result_list[i]['scores_3d'] = result_box['scores_3d']
-            result_list[i]['labels_3d'] = result_box['labels_3d']
+        # bbox_list = output_dict['final_box_dicts'] 
+        # for i in range(len(bbox_list)):
+        #     bbox_list[i]['pred_labels'] = bbox_list[i]['pred_labels']-1
+        # result_list = []
+        # for i,bbox in enumerate(bbox_list):
+        #     result_list.append(dict())
+        #     result_box = dict()
+        #     result_box['boxes_3d'] = self.get_boxes(img_metas,bbox['pred_boxes'].cpu())
+        #     result_box['scores_3d'] = bbox['pred_scores'].cpu()
+        #     result_box['labels_3d'] = bbox['pred_labels'].cpu()
+        #     result_list[i]['pts_bbox'] = result_box
+        #     result_list[i]['img_metas'] = img_metas
+        #     result_list[i]['boxes_3d'] = result_box['boxes_3d']
+        #     result_list[i]['scores_3d'] = result_box['scores_3d']
+        #     result_list[i]['labels_3d'] = result_box['labels_3d']
+        result_list = [dict() for i in range(len(img_metas))]
+        bbox_list = self.dense_head.get_bboxes(
+            output_dict, img_metas, rescale=rescale)
+        bbox_results = [
+            bbox3d2result(bboxes, scores, labels)
+            for bboxes, scores, labels in bbox_list
+        ]
+        for result_dict, pts_bbox in zip(result_list, bbox_results):
+                result_dict['pts_bbox'] = pts_bbox
+                result_dict['img_metas'] = img_metas
+                result_dict['boxes_3d'] = pts_bbox['boxes_3d']
+                result_dict['scores_3d'] = pts_bbox['scores_3d']
+                result_dict['labels_3d'] = pts_bbox['labels_3d']
+                
         return result_list  

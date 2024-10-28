@@ -22,7 +22,8 @@ class VoxelNeXtCoopertive(Base3DDetector):
     which is used to fuse the results of multiple agents in DAIR-V2X dataset."""
     def __init__(self, pts_voxel_layer,pts_voxel_encoder,
                 backbone_3d, fusion_channels, dense_head, post_processing,\
-                single=False,proj_first=False,raw=False, dairv2x=True, **kwargs ):
+                single=False, proj_first=False, raw=False, dairv2x=True,\
+                train_cfg = None, test_cfg = None, **kwargs ):
                   #num_class, dataset):
         super(VoxelNeXtCoopertive,self).__init__()
         # self.module_list = self.build_networks()
@@ -40,6 +41,10 @@ class VoxelNeXtCoopertive(Base3DDetector):
             self.inf_backbone_3d = builder.build_backbone(backbone_3d)
         self.fuse_net = self.build_fusion_net(fusion_channels)
         if dense_head:
+            train_cfg = train_cfg.pts if train_cfg else None
+            dense_head.update(train_cfg=train_cfg)
+            test_cfg = test_cfg.pts if test_cfg else None
+            dense_head.update(test_cfg=test_cfg)
             self.dense_head = builder.build_head(dense_head)
         if post_processing:
             self.post_processing_cfg = post_processing

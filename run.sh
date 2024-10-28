@@ -1,0 +1,4 @@
+python tools/test.py  configs_CooperativePerception/scheduling/hv_voxelnext-rawlevel-single_train_object_test_4x8_2x_whales-3d.py  work_dirs/voxelnext/epoch_18.pth  --eval bbox
+python tools/test.py  configs_CooperativePerception/pointpillars/hv_pointpillars_secfpn_sbn-raw_ran_train_closest_test_whales-3d.py work_dirs/hv_pointpillars_secfpn_sbn-raw_ran_train_closest_test_whales-3d/epoch_18.pth   --eval bbox
+python tools/test.py  configs_CooperativePerception/pointpillars/hv_pointpillars_secfpn_sbn-fcooper_ran_train_closest_test_whales-3d.py work_dirs/hv_pointpillars_secfpn_sbn-fcooper_ran_train_closest_test_whales-3d/epoch_24.pth --eval bbox
+python tools/test.py  configs_CooperativePerception/voxelnext/cooperative_voxel_next_whales_50m.py work_dirs/cooperative_voxel_next_whales_50m/epoch_12.pth  --eval bbox

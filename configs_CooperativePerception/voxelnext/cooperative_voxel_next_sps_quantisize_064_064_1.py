@@ -320,7 +320,7 @@ data = dict(
                                'scale_factor', 'flip', 'pcd_horizontal_flip',
                                'pcd_vertical_flip', 'box_mode_3d', 'box_type_3d',
                                'img_norm_cfg', 'pcd_trans', 'sample_idx',
-                               'pcd_scale_factor', 'pcd_rotation', 'pts_filename',
+                               'pcd_scale_factor', 'pcd_rotation', 'vehicle_pts_filename',
                                'transformation_3d_flow', 'inf2veh'))
                 ])
         ],
@@ -345,7 +345,7 @@ evaluation = dict(
         dict(type='Collect3D', keys=['points'])
     ])
 lr = 0.001
-optimizer = dict(type='AdamW', lr=0.001, betas=(0.95, 0.99), weight_decay=0.01)
+optimizer = dict(type='AdamW', lr=0.0001, betas=(0.95, 0.99), weight_decay=0.01)
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 lr_config = dict(
     policy='cyclic',
@@ -360,11 +360,11 @@ momentum_config = dict(
 runner = dict(type='EpochBasedRunner', max_epochs=50)
 checkpoint_config = dict(interval=1)
 log_config = dict(
-    interval=50,
+    interval=5,
     hooks=[dict(type='TextLoggerHook'),
            dict(type='TensorboardLoggerHook')])
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-load_from = "work_dirs/cooperative_voxel_next_quantisize_004_004_0062/epoch_22.pth"
+load_from = "work_dirs/cooperative_voxel_next_sps_quantisize_064_064_1/epoch_50.pth"
 resume_from = None
 workflow = [('train', 1)]

@@ -17,6 +17,7 @@ import collections
 
 from functools import reduce
 from ...core.util import normalize_bbox
+from ...utils import loss_utils
 from mmdet3d.ops import  make_sparse_convmodule
 import spconv.pytorch as spconv
 from mmcv.cnn import build_conv_layer
@@ -178,7 +179,8 @@ class SeparateTaskHead(BaseModule):
                 -rot (torch.Tensor): Rotation value with the \
                     shape of [N, B, query, 2].
                 -vel (torch.Tensor): Velocity value with the \
-                    shape of [N, B, query, 2].
+                    shape of [N, B, query, 2].\
+                    REMOVED FOR DAIRV2X 
         """
         N, B, query_num, c1 = x.shape
         x = rearrange(x, "n b q c -> b (n c) q")
@@ -206,7 +208,7 @@ class FSTRHead(BaseModule):
                 downsample_scale=8,
                 scalar=10,
                 noise_scale=1.0,
-                noise_trans=0.0,
+                noise_trans=0.1,
                 dn_weight=1.0,
                 split=0.75,
                 depth_num=64,
@@ -272,9 +274,11 @@ class FSTRHead(BaseModule):
         self.depth_num = depth_num
         self.nms_kernel_size = nms_kernel_size
         self.num_proposals = num_query
+        
         self.loss_cls = build_loss(loss_cls)
         self.loss_bbox = build_loss(loss_bbox)
         self.loss_heatmap = build_loss(loss_heatmap)
+        # self.add_module('loss_heatmap', loss_utils.FocalLossSparse())
         self.bbox_coder = build_bbox_coder(bbox_coder)
         self.pc_range = self.bbox_coder.pc_range
         self.fp16_enabled = False
@@ -334,7 +338,7 @@ class FSTRHead(BaseModule):
         # for sparse heatmap
         self.proposal_head_kernel = proposal_head_kernel
         output_channels = sum(self.num_classes)
-        num_conv = 2
+        num_conv = 3
         self.heatmap_head = nn.Sequential()
         fc_list = []
         for k in range(num_conv - 1):
@@ -345,7 +349,7 @@ class FSTRHead(BaseModule):
                 self.proposal_head_kernel,
                 norm_cfg=dict(type='BN1d', eps=1e-3, momentum=0.01),
                 padding=int(self.proposal_head_kernel//2),
-                indice_key='head_spconv_1',
+                indice_key='head_spconv_'+str(k+1),
                 conv_type='SubMConv2d',
                 order=('conv', 'norm', 'act')),
             )
@@ -387,16 +391,18 @@ class FSTRHead(BaseModule):
         """
             list([bs, c, h, w])
         """
+        batch_dict = [batch_dict]
         img_metas = [img_metas]
         return multi_apply(self.forward_single, batch_dict, img_metas)    
 
-    def forward_single(self, x, img_metas):
+    def forward_single(self, batch_dict, img_metas):
         """
             x: [bs c h w]
             return List(dict(head_name: [num_dec x bs x num_query * head_dim]) ) x task_num
         """
         ret_dicts = []
         batch_size = len(img_metas)
+        x = batch_dict['encoded_spconv_tensor']
         x = self.shared_conv(x)
         x_feature = torch.zeros(*(x.features.shape),device = x.features.device)
         x_feature[:,:] = x.features
@@ -406,7 +412,7 @@ class FSTRHead(BaseModule):
         x_batch_indices[:,:] = x.indices[:,:1]
         x_ind[:,:] = x.indices[:,-2:]
         x_ind = x_ind.to(torch.float32)
-        cfg = self.train_cfg if self.train_cfg else self.test_cfg
+        cfg = self.train_cfg if self.training else self.test_cfg
         y_size, x_size = x.spatial_shape
         x_2dpos[:,0] = (x_ind[:,1] + 0.5) / x_size
         x_2dpos[:,1] = (x_ind[:,0] + 0.5) / y_size
@@ -419,14 +425,13 @@ class FSTRHead(BaseModule):
                 spatial_shape=sparse_hm.spatial_shape,
                 batch_size=sparse_hm.batch_size
             )
-        x_hm_max = self.sparse_maxpool_2d(sparse_hm_clone, True)
-        x_hm_max_small = self.sparse_maxpool_2d_small(sparse_hm_clone, True)
+        x_hm_max = self.sparse_maxpool_2d(sparse_hm_clone)
+        x_hm_max_small = self.sparse_maxpool_2d_small(sparse_hm_clone)
 
 
         selected = (x_hm_max.features == sparse_hm_clone.features)
         selected_small = (x_hm_max_small.features == sparse_hm_clone.features)
-        selected[:,8] = selected_small[:,8]
-        selected[:,9] = selected_small[:,9]
+
 
         score = sparse_hm_clone.features * selected
         score, _ = score.topk(1,dim=1)
@@ -561,7 +566,8 @@ class FSTRHead(BaseModule):
             
             flatten_order = nearest_order_topk.view(-1,self.init_query_topk)
             flatten_weight = (gaussian_weight/gaussian_weight_sum.unsqueeze(1)).view(-1,self.init_query_topk)
-            feature = (sample_token.gather(0, flatten_order.repeat(1,sample_token.shape[1]))*flatten_weight).view(-1,self.init_query_topk,sample_token.shape[1]).sum(1).unsqueeze(0)
+            gather_feature = sample_token.gather(0, flatten_order.repeat(1,int(sample_token.shape[1]/self.init_query_topk)))
+            feature = (gather_feature*flatten_weight).view(-1,self.init_query_topk,sample_token.shape[1]).sum(1).unsqueeze(0)
             query_feature_list.append(feature)
         
         query_feature = torch.cat(query_feature_list,dim=0)
@@ -686,7 +692,7 @@ class FSTRHead(BaseModule):
                 height: (num_dec, batch_size, num_query, 1)
                 dim: (num_dec, batch_size, num_query, 3)
                 rot: (num_dec, batch_size, num_query, 2)
-                vel: (num_dec, batch_size, num_query, 2)
+                vel: (num_dec, batch_size, num_query, 2) Remove for DAIRV2X
                 cls_logits: (num_dec, batch_size, num_query, task_classes)
         Returns:
             dict[str, Tensor]: A dictionary of loss components.
@@ -698,8 +704,7 @@ class FSTRHead(BaseModule):
             for dec_id in range(num_decoder):
                 pred_bbox = torch.cat(
                     (preds_dict[0]['center'][dec_id], preds_dict[0]['height'][dec_id],
-                    preds_dict[0]['dim'][dec_id], preds_dict[0]['rot'][dec_id],
-                    preds_dict[0]['vel'][dec_id]),
+                    preds_dict[0]['dim'][dec_id], preds_dict[0]['rot'][dec_id]),
                     dim=-1
                 )
                 all_pred_bboxes[dec_id].append(pred_bbox)
@@ -730,8 +735,7 @@ class FSTRHead(BaseModule):
             for dec_id in range(num_decoder):
                 pred_bbox = torch.cat(
                     (preds_dict[0]['dn_center'][dec_id], preds_dict[0]['dn_height'][dec_id],
-                    preds_dict[0]['dn_dim'][dec_id], preds_dict[0]['dn_rot'][dec_id],
-                    preds_dict[0]['dn_vel'][dec_id]),
+                    preds_dict[0]['dn_dim'][dec_id], preds_dict[0]['dn_rot'][dec_id]),
                     dim=-1
                 )
                 dn_pred_bboxes[dec_id].append(pred_bbox)
@@ -753,24 +757,24 @@ class FSTRHead(BaseModule):
             loss_dict[f'd{num_dec_layer}.dn_loss_bbox'] = loss_bbox_i
             num_dec_layer += 1
 
-        sparse_hm_voxel = preds_dict[0]['sparse_heatmap']
-        spatial_shape, batch_index, voxel_indices, spatial_indices, num_voxels = self._get_voxel_infos(sparse_hm_voxel)
-        voxel_hp_target = multi_apply(
-            self.sparse_hp_target_single,
-            gt_bboxes_3d,
-            gt_labels_3d,
-            num_voxels,
-            spatial_indices,
-        )
-        # voxel_hp_target = self.sparse_hp_target_single(sparse_hm_voxel, gt_bboxes_3d,gt_labels_3d)
-        # TODO: Fix bugs for hp target (uncorrect when batchsize != 1)
-        hp_target = [ t.permute(1,0) for t in voxel_hp_target[0]]
-        hp_target = torch.cat(hp_target,dim=0)
-        pred_hm = sparse_hm_voxel.features.clone()
-        loss_heatmap = self.loss_heatmap(clip_sigmoid(pred_hm), hp_target, avg_factor=max(hp_target.eq(1).float().sum().item(), 1))
-        # heatmap_target = torch.cat(hp_target, dim=0)
-        # loss_heatmap = self.loss_heatmap(clip_sigmoid(preds_dict[0]['dense_heatmap']), heatmap_target, avg_factor=max(heatmap_target.eq(1).float().sum().item(), 1))
-        loss_dict['loss_heatmap'] = loss_heatmap
+        # sparse_hm_voxel = preds_dict[0]['sparse_heatmap']
+        # spatial_shape, batch_index, voxel_indices, spatial_indices, num_voxels = self._get_voxel_infos(sparse_hm_voxel)
+        # voxel_hp_target = multi_apply(
+        #     self.sparse_hp_target_single,
+        #     gt_bboxes_3d,
+        #     gt_labels_3d,
+        #     num_voxels,
+        #     spatial_indices,
+        # )
+        # # voxel_hp_target = self.sparse_hp_target_single(sparse_hm_voxel, gt_bboxes_3d,gt_labels_3d)
+        # # TODO: Fix bugs for hp target (uncorrect when batchsize != 1)
+        # hp_target = [ t.permute(1,0) for t in voxel_hp_target[0]]
+        # hp_target = torch.cat(hp_target,dim=0)
+        # pred_hm = sparse_hm_voxel.features.clone()
+        # loss_heatmap = self.loss_heatmap(clip_sigmoid(pred_hm), hp_target)#, avg_factor=max(hp_target.eq(1).float().sum().item(), 1))
+        # # heatmap_target = torch.cat(hp_target, dim=0)
+        # # loss_heatmap = self.loss_heatmap(clip_sigmoid(preds_dict[0]['dense_heatmap']), heatmap_target, avg_factor=max(heatmap_target.eq(1).float().sum().item(), 1))
+        # loss_dict['loss_heatmap'] = loss_heatmap
         return loss_dict
 
 
@@ -1149,8 +1153,8 @@ class FSTRHead(BaseModule):
         bbox_weights = bbox_weights * bbox_weights.new_tensor(self.train_cfg.code_weights)[None, :]
         # bbox_weights[:, 6:8] = 0
         loss_bbox = self.loss_bbox(
-                pred_bboxes[isnotnan, :10], normalized_bbox_targets[isnotnan, :10], bbox_weights[isnotnan, :10], avg_factor=num_tgt)
- 
+                # pred_bboxes[isnotnan, :10], normalized_bbox_targets[isnotnan, :10], bbox_weights[isnotnan, :10], avg_factor=num_tgt)
+                pred_bboxes[isnotnan, :8], normalized_bbox_targets[isnotnan, :8], bbox_weights[isnotnan, :8], avg_factor=num_tgt)
         loss_cls = torch.nan_to_num(loss_cls)
         loss_bbox = torch.nan_to_num(loss_bbox)
 

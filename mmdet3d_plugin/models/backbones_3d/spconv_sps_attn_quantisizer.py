@@ -13,10 +13,10 @@ from .spconv_sps_former import SPSPruningFormer
 
 
 @BACKBONES.register_module()
-class VoxelResSPSQuantiseizer(nn.Module):
+class VoxelResSPSAttnQuantiseizer(nn.Module):
     downsample_type = ["dynamicdownsample_attn", "dynamicdownsample_attn", "dynamicdownsample_attn", "spconv", "spconv"]
     
-    def __init__(self, input_channels, grid_size, spconv_kernel_sizes=[3,3,3,3], downsample_pruning_ratio = [0, 0, 0, 0.5, 0.5], \
+    def __init__(self, input_channels, grid_size, spconv_kernel_sizes=[3,3,3,3], downsample_pruning_ratio = [0.5, 0.5, 0.5, 0, 0], \
                  channels=[16,32,64,128,128], point_cloud_range=[-3, -46.08, 0, 1, 46.08, 92.16], **kwargs):
         super().__init__()
         # self.model_cfg = model_cfg
@@ -80,9 +80,9 @@ class VoxelResSPSQuantiseizer(nn.Module):
         )
         self.backbone_channels = {
             'x_conv1': channels[0],
-            # 'x_conv2': channels[1],
-            # 'x_conv3': channels[2],
-            # 'x_conv4': channels[3]
+            'x_conv2': channels[1],
+            'x_conv3': channels[2],
+            'x_conv4': channels[3]
         }
         self.forward_ret_dict = {}
         self.backbone_model = None

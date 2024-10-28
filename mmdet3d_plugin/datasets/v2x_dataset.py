@@ -668,7 +668,7 @@ class V2XDataset(Custom3DDataset):
             label_v = Label(osp.join(self.data_root, elem["cooperative_label_path"]), filt_world)
             label_v["boxes_3d"] = trans_1(label_v["boxes_3d"])
             evaluator.add_frame(pred, label_v)
-            if i %100 ==0:
+            if i % 50 ==0:
                 print(i)
         evaluator.print_ap("3d")
         evaluator.print_ap("bev")

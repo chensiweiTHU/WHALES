@@ -568,7 +568,7 @@ class DynamicFocalPruningDownsample(spconv.SparseModule):
         box_of_pts_cls_targets = []
         
         for b in range(batch_size):
-            if self.training:
+            if True:
                 index=x.indices[:, 0]
                 batch_index = index == b
                 mask_voxel = voxel_importance[batch_index]
@@ -581,7 +581,7 @@ class DynamicFocalPruningDownsample(spconv.SparseModule):
                 box_of_pts_cls_targets.append(box_of_pts_batch>=0)
         
         loss_box_of_pts = 0
-        if self.training:
+        if True:
             mask_voxels = torch.cat(mask_voxels).squeeze(-1)
             box_of_pts_cls_targets = torch.cat(box_of_pts_cls_targets)
             # print("mask_voxels", mask_voxels.shape, "box_of_pts_cls_targets:",box_of_pts_cls_targets.sum())
