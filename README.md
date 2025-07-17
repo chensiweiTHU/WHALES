@@ -34,9 +34,9 @@ As a demonstration, we conduct experiments on agent scheduling task, where the e
 
 1. Clone our repository:
 
-``
+```bash
 git clone https://github.com/chensiweiTHU/WHALES.git
-``
+```
 
 2. Install mmetection3D
 
@@ -58,9 +58,9 @@ We also provide whales-mini in https://pan.baidu.com/s/1b5JuUsGgBT3IaPoPmNpuAA w
 Like other datasets in mmdetection3D, first we put the dataset in `./data/whales/` directory.
 Then run the following command to preprocess data.
 
-``
+```python
 python tools/create_data.py whales --root-path ./data/whales/ --out-dir ./data/whales/ --extra-tag whales
-``
+```
 
 Like other datasets, you will find generated `*.pkl` files in `./data/whales/`
 
@@ -68,22 +68,22 @@ Like other datasets, you will find generated `*.pkl` files in `./data/whales/`
 
 We use mmdetection3D format config files in ./configs_CooperativePerception/ to run our experiments. Run the following command to train the models.
 
-``
+```bash
 bash tools/dist_train.sh your_config_file.py number_of_gpus
-``
+```
 ## Testing 
 
  Run the following command to test the trained models.
 
-``
+```bash
 bash tools/dist_test.sh your_config_file.py your_model_file.pth number_of_gpus --eval bbox
-``
+```
 
 We use mAP and NDS as our benchmark.
 
 ## Scheduling Algorithms
 
-We focus on agent scheduling in our experiments, We implement scheduling algorithms in `./mmdet3d_plugin/datasets/pipelines/cooperative_perception.py`. You can write customized scheduling algorithms in this file.
+We focus on **agent scheduling** in our experiments, We implement scheduling algorithms in `./mmdet3d_plugin/datasets/pipelines/cooperative_perception.py`. You can also implement other scheduling algorithms in this file.
 
 
 ## Experimental Results
@@ -122,4 +122,3 @@ We focus on agent scheduling in our experiments, We implement scheduling algorit
 ## TODOs
 - Publish the dataset and checkpoints on Hugging Face
 - Reorganize file structures
-
