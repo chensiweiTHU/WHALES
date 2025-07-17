@@ -119,4 +119,7 @@ We focus on agent scheduling in our experiments, We implement scheduling algorit
 | **Multiple Random**   | **34.5**/16.9 | 60.7/35.1     | 61.2/37.1     | 61.4/36.4       | 58.8/12.9          |
 | **Full Communication**| 29.1/10.5  | **63.7**/38.4  | **64.0**/39.9 | **64.7**/41.3   | **65.1**/39.2     |
 
+## TODOs
+- Publish the dataset and checkpoints on Hugging Face
+- Reorganize file structures
 
