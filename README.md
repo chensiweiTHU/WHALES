@@ -6,8 +6,9 @@ Achieving high levels of safety and reliability in autonomous driving remains a 
 To bridge this gap, we present **W**ireless en**H**anced **A**utonomous vehicles with **L**arge number of **E**ngaged agent**S** (**WHALES**), a dataset generated using CARLA simulator that features an unprecedented average of 8.4 agents per driving sequence. In addition to providing the largest number of agents and viewpoints among autonomous driving datasets, WHALES records agent behaviors, enabling cooperation across multiple tasks. This expansion allows for new supporting tasks in cooperative perception.
 
 As a demonstration, we conduct experiments on agent scheduling task, where the ego agent selects one of multiple candidate agents to cooperate with, optimizing perception gains in autonomous driving. The WHALES dataset and codebase can be found at [WHALES GitHub](https://github.com/chensiweiTHU/WHALES).
-# Strengths of our dataset:
-## A Detailed Comparison Between Proposed Dataset and Existing Autonomous Driving Datasets
+
+## Strengths of our dataset:
+### A Detailed Comparison Between Proposed Dataset and Existing Autonomous Driving Datasets
 
 | Dataset | Year | Real/Simulated | V2X | Image | Point Cloud | 3D Annotations | Classes | Average No. of Agents |
 |---------|------|-----------------|-----|-------|-------------|---------------|---------|-----------------------|
@@ -20,7 +21,7 @@ As a demonstration, we conduct experiments on agent scheduling task, where the e
 | V2V4Real | 2023 | real | V2V | 40k | 20k | 240k | 5 | 2|
 | **WHALES (Ours)** | 2024 | simulated | V2V&I | 70k | 17k | 2.01M | 3 | 8.4|
 
-## Four Classes of Agents in the WHALES Dataset
+### Four Classes of Agents in the WHALES Dataset
 
 | Agent Location | Agent Category | Sensor Configuration | Planning & Control | Tasks | Spawning Positions |
 |-----------------|----------------|---------------------|---------------------|-------|---------------------|
@@ -29,7 +30,7 @@ As a demonstration, we conduct experiments on agent scheduling task, where the e
 | Roadside         | RSU            | LiDAR × 1 + Camera × 4 | RL Algorithm | Perception & Planning | Static |
 | Anywhere         | Obstacle Agent  | No sensors equipped  | CARLA Auto-pilot | No tasks | Random |
 
-# Installation
+## Installation
 
 1. Clone our repository:
 
@@ -45,12 +46,12 @@ Please refer to https://github.com/open-mmlab/mmdetection3d and install mmdetecc
 
 Please refer to https://github.com/DerrickXuNu/OpenCOOD and install opencood.
 
-# Preparing
+## Preparation
 1. Download the dataset
 
 Download the dataset in Baidu netdisk https://pan.baidu.com/s/1dintX-d1T-m2uACqDlAM9A with a code `gduh`.
 
-We also provide a mini version in https://pan.baidu.com/s/1b5JuUsGgBT3IaPoPmNpuAA with a code `nnqw`.
+We also provide whales-mini in https://pan.baidu.com/s/1b5JuUsGgBT3IaPoPmNpuAA with a code `nnqw`.
  
 3. Preprocess the dataset
 
@@ -63,14 +64,14 @@ python tools/create_data.py whales --root-path ./data/whales/ --out-dir ./data/w
 
 Like other datasets, you will find generated `*.pkl` files in `./data/whales/`
 
-# Trianing
+## Training
 
 We use mmdetection3D format config files in ./configs_CooperativePerception/ to run our experiments. Run the following command to train the models.
 
 ``
 bash tools/dist_train.sh your_config_file.py number_of_gpus
 ``
-# Testing 
+## Testing 
 
  Run the following command to test the trained models.
 
@@ -80,14 +81,14 @@ bash tools/dist_test.sh your_config_file.py your_model_file.pth number_of_gpus -
 
 We use mAP and NDS as our benchmark.
 
-# Scheduling Algorithms
+## Scheduling Algorithms
 
 We focus on agent scheduling in our experiments, We implement scheduling algorithms in `./mmdet3d_plugin/datasets/pipelines/cooperative_perception.py`. You can write customized scheduling algorithms in this file.
 
 
-# Experimental Results
+## Experimental Results
 
-## Stand-alone 3D Object Detection Benchmark (50m/100m)
+### Stand-alone 3D Object Detection Benchmark (50m/100m)
 
 | Method | $\text{AP}_{Veh}\uparrow$ | $\text{AP}_{Ped}\uparrow$ | $\text{AP}_{Cyc}\uparrow$ | $mAP\uparrow$ | $mATE\downarrow$ | $mASE\downarrow$ | $mAOE\downarrow$ | $mAVE\downarrow$ | $NDS\uparrow$ |
 |---------|--------------------------|--------------------------|--------------------------|----------------|-------------------|-------------------|-------------------|-------------------|--------------|
@@ -96,7 +97,7 @@ We focus on agent scheduling in our experiments, We implement scheduling algorit
 | RegNet | 66.9/42.3 | 38.7/8.4 | 32.9/11.7 | 46.2/20.8 | 0.119/0.240 | 0.874/0.881 | 1.079/1.158 | 1.231/1.421 | 33.2/19.2 |
 | VoxelNeXt | 64.7/42.3 | 52.2/27.4 | 35.9/9.0 | 50.9/26.2 | 0.075/0.142 | 0.877/0.877 | 1.212/1.147 | 1.133/1.348 | 36.0/22.9 |
 
-## Cooperative 3D Object Detection Benchmark (50m/100m)
+### Cooperative 3D Object Detection Benchmark (50m/100m)
 | Method | $\text{AP}_{Veh}\uparrow$ | $\text{AP}_{Ped}\uparrow$ | $\text{AP}_{Cyc}\uparrow$ | $mAP\uparrow$ | $mATE\downarrow$ | $mASE\downarrow$ | $mAOE\downarrow$ | $mAVE\downarrow$ | $NDS\uparrow$ |
 |---------|--------------------------|--------------------------|--------------------------|----------------|-------------------|-------------------|-------------------|-------------------|--------------|
 | No Fusion | 67.1/41.5 | 38.0/6.3 | 37.3/11.6 | 47.5/19.8 | 0.117/0.247 | 0.876/0.880 | 1.069/1.126 | 1.260/1.625 | 33.8/18.6 |
@@ -106,7 +107,7 @@ We focus on agent scheduling in our experiments, We implement scheduling algorit
 
 * We use sparse convolution to fuse the VoxelNext features
 
-## mAP Scores on 3D Object Detection using Different Scheduling Policies (50m/100m)
+### mAP Scores on 3D Object Detection using Different Scheduling Policies (50m/100m)
 
 | Inference \ Training | No Fusion | Closest Agent | Single Random | Multiple Random | Full Communication |
 |-----------------------|-----------|---------------|---------------|-----------------|--------------------|
