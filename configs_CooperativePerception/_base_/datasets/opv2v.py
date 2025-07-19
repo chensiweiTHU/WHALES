@@ -4,7 +4,7 @@ class_names = [
 'Car'
 ]
 dataset_type = 'OpencoodDataset'
-# data_root = 'data/dolphins-new/'
+# data_root = 'data/whales/'
 input_modality = dict(
     use_lidar=True,
     use_camera=False,

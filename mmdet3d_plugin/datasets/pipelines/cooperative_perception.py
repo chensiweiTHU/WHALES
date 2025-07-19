@@ -313,7 +313,7 @@ class RawlevelPointCloudFusion(object):
     
 @PIPELINES.register_module(force=True)
 class AgentScheduling(object):
-    def __init__(self, mode="full_communication", submode="", basic_data_limit=2e6, timesteps=1000, window_size=10, scheduling_range = [-50, -50, -5, 50, 50, 3]):
+    def __init__(self, mode="full_communication", submode="", agent_number_limit=1, basic_data_limit=2e6, timesteps=1000, window_size=10, scheduling_range = [-50, -50, -5, 50, 50, 3]):
         "the mode indciates the communication model used in the cooperative perception"
         "the submode indicates the scheduling algorithm used in the cooperative perception"
         "the basic_data_limit indicates the basic data limit for each vehicle"
@@ -332,6 +332,7 @@ class AgentScheduling(object):
         self.ego_cp_history = {}
         self.history_agent_results = dict()
         self.agent_performance_history = {}
+        self.agent_number_limit = agent_number_limit
 
     def __call__(self, results: dict):
         # results[]
@@ -348,10 +349,11 @@ class AgentScheduling(object):
             for veh_token in cooperative_results.keys():
                 cooperative_limit[veh_token] = self.basic_data_limit
             results['cooperative_datasize_limit'] = cooperative_limit
+
         elif self.mode=="groupcast":
             if self.submode=="full_random":
                 self.basic_data_limit = np.inf
-                "evry agent has 50% chance to be chosen"
+                "every agent has a 50% chance to be chosen"
                 cooperative_veh_tokens = list(results['cooperative_agents'].keys())
                 choose_mask = np.random.choice([0,1], len(cooperative_veh_tokens), p=[0.5, 0.5])
                 cooperative_veh_tokens = [cooperative_veh_tokens[i] for i in range(len(cooperative_veh_tokens)) \
@@ -364,6 +366,7 @@ class AgentScheduling(object):
                     cooperative_results[veh_token] = results['cooperative_agents'][veh_token]
                 results['cooperative_agents'] = cooperative_results
                 results['cooperative_datasize_limit'] = cooperavtive_datasize_limit
+
         elif self.mode == "unicast":
             "we can only choose one vehicle to communicate"
             if self.submode == "closest":
@@ -400,7 +403,7 @@ class AgentScheduling(object):
                     results['cooperative_datasize_limit'] = {
                         cooperative_agent:self.basic_data_limit
                     }
-                else: # still get closest in no candidates in range
+                else: # still get closest if no candidates in range
                     cooperative_agent = str(np.argmin(distance2ego))
                     results['cooperative_veh_tokens'] = [cooperative_agent]
                     results['cooperative_agents'] = {
@@ -414,6 +417,7 @@ class AgentScheduling(object):
                     pass
                 agents_data = self.withinRange(results)
                 veh_token = results['veh_token']
+                # print(results['cooperative_veh_tokens'])
                 scene_token = results['scene_token']
                 best_agent = None
                 max_vehicles = -1
@@ -433,6 +437,41 @@ class AgentScheduling(object):
                 results['cooperative_datasize_limit'] = {
                     best_agent: self.basic_data_limit
                 }
+            elif self.submode == "multi-best":
+                if 'history_results' not in results.keys():
+                    pass
+                agents_data = self.withinRange(results)
+                veh_token = results['veh_token']
+                # print(results['cooperative_veh_tokens'])
+                scene_token = results['scene_token']
+                eligible_agents = []
+                for agent, data in agents_data.items():
+                    if agent == veh_token:
+                        continue
+                    num_vehicles = data['num_vehicles_within_range']
+                    avg_score = np.mean(data['scores']) if data['scores'] else 0
+                    eligible_agents.append((agent, num_vehicles, avg_score))
+
+
+                eligible_agents.sort(key=lambda x: (x[1], x[2]), reverse=True)
+                # print(eligible_agents)
+
+                selected_agents = eligible_agents[:self.agent_number_limit]
+                selected_tokens = [agent[0] for agent in selected_agents]
+
+                cooperative_agent = {}
+                for agent_token in selected_tokens:
+                    agent_data = agents_data[agent_token]
+                    cooperative_agent[agent_token] = agent_data
+
+                results['cooperative_veh_tokens'] = selected_tokens
+                cooperavtive_datasize_limit = dict()
+                cooperative_results = dict()
+                for veh_token in selected_tokens:
+                    cooperavtive_datasize_limit[veh_token] = self.basic_data_limit
+                    cooperative_results[veh_token] = results['cooperative_agents'][veh_token]
+                results['cooperative_agents'] = cooperative_results
+                results['cooperative_datasize_limit'] = cooperavtive_datasize_limit
             # elif self.submode == "UCB":
             #     pass
 
@@ -488,7 +527,34 @@ class AgentScheduling(object):
             #             'last_seen_gain': last_seen_gain,
             #             'last_seen_score': last_seen_score,
             #         }
-
+            elif self.submode == "multi-closest":
+                distancegraph = results['sample_info']['cav_distance_graph']
+                v_id = int(results['veh_token'])
+                distance2ego = distancegraph[v_id].copy()
+                print(distance2ego)
+                
+                # Exclude ego vehicle
+                distance2ego[v_id] = np.inf
+                
+                # Get indices of N closest agents (ascending order)
+                closest_indices = np.argsort(distance2ego)[:self.agent_number_limit]
+                
+                # Convert to string tokens and filter valid agents
+                selected_tokens = [str(idx) for idx in closest_indices 
+                                if idx in results['cooperative_agents']]
+                
+                # Build cooperative structures
+                cooperative_results = {}
+                cooperative_datasize = {}
+                
+                for token in selected_tokens:
+                    cooperative_results[token] = results['cooperative_agents'][token]
+                    cooperative_datasize[token] = self.basic_data_limit
+                
+                # Update results
+                results['cooperative_veh_tokens'] = selected_tokens
+                results['cooperative_agents'] = cooperative_results
+                results['cooperative_datasize_limit'] = cooperative_datasize
 
             elif self.submode == "mass":
                 last_cp_agent = self.history_schedules.get(self.current_timestep - 5, None)
@@ -538,48 +604,96 @@ class AgentScheduling(object):
                         'last_seen_time': self.current_timestep,
                         'last_seen_gain': agents_data[cooperative_agent]['num_vehicles_within_range']
                     }
-            # elif self.submode == "mass":
-            #     last_cp_agent = self.history_schedules.get(self.current_timestep - 5, None)
-            #     agents_data = self.withinRange(results)
-            #     # ego_agent = results['veh_token']
-            #     available_agents = list(results['cooperative_agents'].keys())
 
-            #     cooperative_agent = None
+            if self.submode == "modified_best":
+                if 'history_results' not in results.keys():
+                    pass
 
-            #     for agent in available_agents:
-            #         if agent not in self.history_schedules:
-            #             cooperative_agent = agent
-            #             break
-            #     else:
-            #         for agent in available_agents:
-            #             if agent not in self.history_agent_results:
-            #                 self.history_agent_results[agent] = {
-            #                     'last_seen_time': self.current_timestep,
-            #                     'last_seen_gain': agents_data[agent]['num_vehicles_within_range']
-            #                 }
-            #             last_seen_time = self.history_agent_results[agent]['last_seen_time']
-            #             last_seen_gain = self.history_agent_results[agent]['last_seen_gain']
+                agents_data = self.withinRange(results)
+                veh_token = results['veh_token']
+                scene_token = results['scene_token']
 
-            #             ucb_score = last_seen_gain + self.beta * np.sqrt(self.current_timestep - last_seen_time)
+                best_agent = None
+                best_score = float('-inf')
 
-            #             if ucb_score > max_ucb_score:
-            #                 max_ucb_score = ucb_score
-            #                 cooperative_agent = agent
+                last_cp_agent = self.history_schedules.get(self.current_timestep - 5, None)
+                
+                # Compute UCB scores and select the best agent
+                for agent, data in agents_data.items():
+                    if agent == veh_token:
+                        continue
+                    
+                    num_vehicles = data['num_vehicles_within_range']
+                    avg_score = np.mean(data['scores']) if data['scores'] else 0
+                    
+                    # Fetch past history
+                    if agent not in self.history_agent_results:
+                        self.history_agent_results[agent] = {
+                            'last_seen_time': self.current_timestep,
+                            'last_seen_gain': num_vehicles
+                        }
+                    
+                    last_seen_time = self.history_agent_results[agent]['last_seen_time']
+                    last_seen_gain = self.history_agent_results[agent]['last_seen_gain']
 
-            #     if cooperative_agent is not None:
-            #         results['cooperative_veh_tokens'] = [cooperative_agent]
-            #         results['cooperative_agents'] = {
-            #             cooperative_agent: results['cooperative_agents'][cooperative_agent]
-            #         }
-            #         results['cooperative_datasize_limit'] = {
-            #             cooperative_agent: self.basic_data_limit
-            #         }
+                    # Compute UCB score
+                    ucb_score = last_seen_gain + self.beta * np.sqrt(self.current_timestep - last_seen_time)
 
-            #         self.history_agent_results[cooperative_agent] = {
-            #             'last_seen_time': self.current_timestep,
-            #             'last_seen_gain': agents_data[cooperative_agent]['num_vehicles_within_range']
-            #         }
+                    # Apply penalty if this agent was chosen last time
+                    if agent == last_cp_agent:
+                        ucb_score *= 0.9  # Reduce priority of previously used agent
 
+                    # Compute final weighted score (combining UCB and object detection metrics)
+                    final_score = num_vehicles + avg_score + ucb_score
+
+                    if final_score > best_score:
+                        best_agent = agent
+                        best_score = final_score
+
+                # Assign the best agent to results
+                if best_agent:
+                    results['cooperative_veh_tokens'] = [best_agent]
+                    results['cooperative_agents'] = {best_agent: results['cooperative_agents'][best_agent]}
+                    results['cooperative_datasize_limit'] = {best_agent: self.basic_data_limit}
+
+                    # Update history for UCB tracking
+                    self.history_agent_results[best_agent] = {
+                        'last_seen_time': self.current_timestep,
+                        'last_seen_gain': agents_data[best_agent]['num_vehicles_within_range']
+                    }
+
+            
+            elif self.submode == "multi-mass":
+                agents_data = self.withinRange(results)
+                available_agents = list(results['cooperative_agents'].keys())
+
+                eligible_agents = []
+                for agent in available_agents:
+                    if agent in agents_data:
+                        num_vehicles = agents_data[agent]['num_vehicles_within_range']
+                        avg_score = np.mean(agents_data[agent]['scores']) if agents_data[agent]['scores'] else 0
+                        ucb_score = num_vehicles + self.beta * np.sqrt(self.current_timestep - self.history_agent_results.get(agent, {}).get('last_seen_time', 0))
+                        eligible_agents.append((agent, num_vehicles, avg_score, ucb_score))
+
+                eligible_agents.sort(key=lambda x: (x[3], x[1], x[2]), reverse=True)
+
+                selected_agents = eligible_agents[:self.agent_number_limit]
+                selected_tokens = [agent[0] for agent in selected_agents]
+
+                cooperative_results = {token: results['cooperative_agents'][token] for token in selected_tokens}
+                cooperative_datasize_limit = {token: self.basic_data_limit for token in selected_tokens}
+
+                results['cooperative_veh_tokens'] = selected_tokens
+                results['cooperative_agents'] = cooperative_results
+                results['cooperative_datasize_limit'] = cooperative_datasize_limit
+
+                for agent in selected_tokens:
+                    self.history_agent_results[agent] = {
+                        'last_seen_time': self.current_timestep,
+                        'last_seen_gain': agents_data[agent]['num_vehicles_within_range']
+                    }
+
+            
             self.history_schedules[self.current_timestep] = results['cooperative_veh_tokens']
         return results                
 

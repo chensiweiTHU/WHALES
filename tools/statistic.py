@@ -269,7 +269,7 @@ def main():
     statistic_database(
         dataset_class_name='DolphinsDataset',
         data_path='/home/ubuntu/Projects/v2x-agents/data/dolphins-new',
-        info_path='/home/ubuntu/Projects/v2x-agents/data/dolphins-new/dolphins_infos_train.pkl',
+        info_path='/home/ubuntu/Projects/v2x-agents/data/whales/whales_infos_train.pkl',
         used_classes=['Car'],
         with_mask=False)
     

@@ -39,7 +39,7 @@ model = dict(
         spconv_kernel_sizes=[3,3], 
         channels=[16,32], 
         point_cloud_range=[-3, -46.08, 0, 1, 46.08, 92.16],
-        downsample_pruning_ratio = [0.8,],
+        downsample_pruning_ratio = [0.0,],
     ),
     backbone_3d=dict(
         type='VoxelResBackBone8xVoxelNeXtSPS',
@@ -58,14 +58,14 @@ model = dict(
         hidden_dim=256,
         downsample_scale=8,
         num_query=900,
-        num_init_query=100,
+        num_init_query=200,
         init_dn_query = True,
         init_learnable_query = True,
         init_query_topk = 1,
-        init_query_radius = 2,
+        init_query_radius = 1,
         gaussian_dn_sampling=True,
-        noise_mean = 0.1,
-        noise_std = 0.005,
+        noise_mean = 0.5,
+        noise_std = 0.125,
         max_sparse_token_per_sample = 10000,
         common_heads=dict(center=(2, 2), height=(1, 2), dim=(3, 2), rot=(2, 2)),
         tasks=[
@@ -128,10 +128,10 @@ model = dict(
             assigner=dict(
                 type='HungarianAssigner3D',
                 cls_cost=dict(type='FocalLossCost', weight=2.0),
-                reg_cost=dict(type='BBox3DL1Cost', weight=0.25),
+                reg_cost=dict(type='BBox3DL1Cost', weight=0.5),
                 iou_cost=dict(type='IoUCost', weight=0.0), # Fake cost. This is just to make it compatible with DETR head. 
                 pc_range=point_cloud_range,
-                code_weights=[2.0, 2.0, 1.0, 1.0, 1.0, 1.0, 0.2, 0.2],
+                code_weights=[2.0, 2.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
             ),
             pos_weight=-1,
             gaussian_overlap=0.1,
@@ -139,7 +139,7 @@ model = dict(
             grid_size=grid_size,  # [x_len, y_len, 1]
             voxel_size=voxel_size,
             out_size_factor=out_size_factor,
-            code_weights=[2.0, 2.0, 1.0, 1.0, 1.0, 1.0, 0.2, 0.2],
+            code_weights=[2.0, 2.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
             point_cloud_range=point_cloud_range)),
     test_cfg=dict(
         pts=dict(
@@ -398,7 +398,7 @@ optimizer = dict(type='AdamW', lr=0.0001, betas=(0.95, 0.99), weight_decay=0.01)
 optimizer_config = dict(
     type='CustomFp16OptimizerHook',
     loss_scale=512.,
-    grad_clip=dict(max_norm=35, norm_type=2),
+    grad_clip=dict(max_norm=30, norm_type=2),
     custom_fp16=dict(pts_voxel_encoder=False, backbone_3d=False, dense_head=True))
 lr_config = dict(
     policy='cyclic',
@@ -413,7 +413,7 @@ momentum_config = dict(
 runner = dict(type='EpochBasedRunner', max_epochs=50)
 checkpoint_config = dict(interval=1)
 log_config = dict(
-    interval=1,
+    interval=69,
     hooks=[dict(type='TextLoggerHook'),
            dict(type='TensorboardLoggerHook')])
 vis_backends = [dict(type='LocalVisBackend')]
@@ -425,6 +425,6 @@ visualization=dict( #用户可视化验证和测试结果
 visualization.update(dict(draw=True, show=True))
 dist_params = dict(backend='nccl')
 log_level = 'DEBUG'
-load_from = "work_dirs/cooperative_voxel_next_sps_trans_quantisize_004_004_0062/epoch_43.pth"
-resume_from = "work_dirs/cooperative_voxel_next_sps_trans_quantisize_004_004_0062/epoch_43.pth"
+load_from = "work_dirs/cooperative_voxel_next_sps_trans_quantisize_004_004_0062/epoch_50.pth"
+resume_from = None
 workflow = [('train', 1)]

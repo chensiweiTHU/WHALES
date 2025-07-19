@@ -9,7 +9,7 @@ class_names = [
     'Vehicle', 'Pedestrian', 'Cyclist'
 ]
 dataset_type = 'DolphinsDataset'
-data_root = 'data/dolphins-new/'
+data_root = 'data/whales/'
 # Input modality for Dolphins2 dataset, this is consistent with the submission
 # format which requires the information in input_modality.
 input_modality = dict(
@@ -173,7 +173,7 @@ data = dict(
     train=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + 'dolphins_infos_train.pkl',
+        ann_file=data_root + 'whales_infos_train.pkl',
         pipeline=train_pipeline,
         classes=class_names,
         modality=input_modality,
@@ -184,7 +184,7 @@ data = dict(
     val=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + 'dolphins_infos_val.pkl',
+        ann_file=data_root + 'whales_infos_val.pkl',
         pipeline=test_pipeline,
         classes=class_names,
         modality=input_modality,
@@ -193,7 +193,7 @@ data = dict(
     test=dict(
         type=dataset_type,
         data_root=data_root,
-        ann_file=data_root + 'dolphins_infos_val.pkl',
+        ann_file=data_root + 'whales_infos_val.pkl',
         pipeline=test_pipeline,
         classes=class_names,
         modality=input_modality,

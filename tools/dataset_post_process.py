@@ -5,7 +5,7 @@ sys.path.append(os.getcwd())
 from tools.data_converter.dolphins import Dolphins
 import yaml
 if __name__ == '__main__':
-    root_path = 'data/dolphins-new/'
+    root_path = 'data/whales/'
     old_path = 'data/config-old'
     dolphins = Dolphins(dataroot=root_path, verbose=True)
     for key in dolphins.config.keys():

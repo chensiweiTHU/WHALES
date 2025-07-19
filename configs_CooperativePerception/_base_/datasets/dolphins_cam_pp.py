@@ -5,7 +5,7 @@ class_names = [
 evaluation = dict(interval=1)
 
 dataset_type = 'DolphinsDataset'
-data_root = 'data/dolphins-new/'
+data_root = 'data/whales/'
 input_modality = dict(
     use_lidar=True,
     use_camera=True,

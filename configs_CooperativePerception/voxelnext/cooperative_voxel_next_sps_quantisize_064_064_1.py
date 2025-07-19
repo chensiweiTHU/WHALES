@@ -39,7 +39,7 @@ model = dict(
         spconv_kernel_sizes=[3,3], 
         channels=[16,32], 
         point_cloud_range=[-3, -46.08, 0, 1, 46.08, 92.16],
-        downsample_pruning_ratio = [0.8,],
+        downsample_pruning_ratio = [0.0,],
     ),
     backbone_3d=dict(
         type='VoxelResBackBone8xVoxelNeXtSPS',

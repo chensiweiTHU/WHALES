@@ -2,10 +2,13 @@ import torch
 import os
 from torch import nn
 import torch.nn.functional as F
-from icecream import ic
+# from icecream import ic
 import numpy as np
-from v2xvit.models.fuse_modules.how2comm_deformable_transformer import RPN_transformer_deformable_mtf_singlescale
-
+# from v2xvit.models.fuse_modules.how2comm_deformable_transformer import RPN_transformer_deformable_mtf_singlescale
+from mmcv.cnn.bricks.transformer import build_transformer_layer_sequence
+import spconv.pytorch as spconv
+from ...utils.spconv_utils import replace_feature
+from mmdet.models.utils.builder import TRANSFORMER
 
 class ScaledDotProductAttention(nn.Module):
     def __init__(self, dim):
@@ -125,6 +128,15 @@ class Decoupling(nn.Module):
 
         return torch.cat(exclusive_list, dim=0), torch.cat(common_list, dim=0), torch.cat(exclusive_map_list, dim=0), torch.cat(common_map_list, dim=0)
 
+class SparseDecoupling(nn.Module):
+    def __init__(self):
+        super(SparseDecoupling, self).__init__()
+        self.exclusive_thre = 0.01  
+        self.common_thre = 0.01
+
+    def forward(self, x1, x2, confidence_lists):
+
+        return exclusive_feat, common_feat, exclusive_map, common_map
 
 class FeedForward(nn.Module):
     def __init__(self, dim, hidden_dim, dropout=0.):
@@ -141,52 +153,86 @@ class FeedForward(nn.Module):
         return self.net(x)
 
 
-class STCFormer(nn.Module):
-    def __init__(self, channel, args, idx):
-        super(STCFormer, self).__init__()
+# class STCFormer(nn.Module):
+#     def __init__(self, channel, args, idx):
+#         super(STCFormer, self).__init__()
 
-        self.decoupling = Decoupling()
-        self.scale = [1, 0.5, 0.25]
-        self.temporal_self_attention = TemporalAttention(channel)
-        self.layer_norm = nn.LayerNorm(
-            [channel, args['height'][idx], args['width'][idx]])
-        self.exclusive_encoder = RPN_transformer_deformable_mtf_singlescale(
-            channel=channel, points=9)
-        self.common_encoder = RPN_transformer_deformable_mtf_singlescale(
-            channel=channel, points=3)
-        self.late_fusion = LateFusion(channel=channel)
-        self.time_embedding = nn.Linear(1, channel)
+#         self.decoupling = Decoupling()
+#         self.scale = [1, 0.5, 0.25]
+#         self.temporal_self_attention = TemporalAttention(channel)
+#         self.layer_norm = nn.LayerNorm(
+#             [channel, args['height'][idx], args['width'][idx]])
+#         self.exclusive_encoder = RPN_transformer_deformable_mtf_singlescale(
+#             channel=channel, points=9)
+#         self.common_encoder = RPN_transformer_deformable_mtf_singlescale(
+#             channel=channel, points=3)
+#         self.late_fusion = LateFusion(channel=channel)
+#         self.time_embedding = nn.Linear(1, channel)
 
-    def forward(self, neighbor_feat, neighbor_confidence, history_feat, level):
-        if level > 0: 
-            neighbor_confidence = F.interpolate(
-                neighbor_confidence, scale_factor=self.scale[level])
-        exclusive_feat, common_feat, exclusive_map, common_map = self.decoupling(
-            neighbor_feat, neighbor_confidence)
+#     def forward(self, neighbor_feat, neighbor_confidence, history_feat, level):
+#         if level > 0: 
+#             neighbor_confidence = F.interpolate(
+#                 neighbor_confidence, scale_factor=self.scale[level])
+#         exclusive_feat, common_feat, exclusive_map, common_map = self.decoupling(
+#             neighbor_feat, neighbor_confidence)
 
-        ego_feat = neighbor_feat[:1]
-        history_feat = torch.cat([ego_feat, history_feat], dim=0)  
+#         ego_feat = neighbor_feat[:1]
+#         history_feat = torch.cat([ego_feat, history_feat], dim=0)  
         
-        delay = [0.0] + [-1.0] * (history_feat.shape[0] -1)
-        delay = torch.tensor([delay]).to(ego_feat.device)  
-        time_embed = self.time_embedding(delay[:, :, None])
-        time_embed = time_embed.reshape(history_feat.shape[0], -1, 1, 1)  
-        history_feat = history_feat + time_embed  
+#         delay = [0.0] + [-1.0] * (history_feat.shape[0] -1)
+#         delay = torch.tensor([delay]).to(ego_feat.device)  
+#         time_embed = self.time_embedding(delay[:, :, None])
+#         time_embed = time_embed.reshape(history_feat.shape[0], -1, 1, 1)  
+#         history_feat = history_feat + time_embed  
         
-        x = self.temporal_self_attention(history_feat)
-        ego_feat = x 
-        temporal_feat = ego_feat
+#         x = self.temporal_self_attention(history_feat)
+#         ego_feat = x 
+#         temporal_feat = ego_feat
 
-        exclusive_feat = torch.cat(
-            [ego_feat, exclusive_feat], dim=0)  
-        common_feat = torch.cat([ego_feat, common_feat], dim=0)  
-        ego_exclusive_feat = self.exclusive_encoder(
-            exclusive_feat, exclusive_map).unsqueeze(0)  
-        ego_common_feat = self.common_encoder(
-            common_feat, common_map).unsqueeze(0)
+#         exclusive_feat = torch.cat(
+#             [ego_feat, exclusive_feat], dim=0)  
+#         common_feat = torch.cat([ego_feat, common_feat], dim=0)  
+#         ego_exclusive_feat = self.exclusive_encoder(
+#             exclusive_feat, exclusive_map).unsqueeze(0)  
+#         ego_common_feat = self.common_encoder(
+#             common_feat, common_map).unsqueeze(0)
 
 
-        x = self.late_fusion(ego_exclusive_feat, ego_common_feat)
-        ego_feat = x
+#         x = self.late_fusion(ego_exclusive_feat, ego_common_feat)
+#         ego_feat = x
 
-        return ego_feat[0], [temporal_feat[0], ego_exclusive_feat[0], ego_common_feat[0]]
+#         return ego_feat[0], [temporal_feat[0], ego_exclusive_feat[0], ego_common_feat[0]]
+
+@TRANSFORMER.register_module()
+class SparseFusionFormer(nn.Module):
+    def __init__(self, channel, encoder=None, decoder=None, init_cfg=None):
+        super(SparseFusionFormer, self).__init__(init_cfg=init_cfg)
+        self.decouple = SparseDecoupling()
+        self.exclusive_encoder = build_transformer_layer_sequence(encoder['exclusive'])
+        self.common_encoder = build_transformer_layer_sequence(encoder['common'])
+        if decoder is not None:
+            self.decoder = build_transformer_layer_sequence(decoder)
+        else:
+            self.decoder = None
+        self.embed_dims = self.encoder.embed_dims
+        self.fusion = LateFusion(channel=channel)
+        
+
+    def forward(self, x1, x2, confidence_lists):
+        x1_feature = x1.features
+        x2_feature = x2.features
+        x_feature = torch.cat([x1_feature, x2_feature])
+        x1_indices = x1.indices[:, :1]
+        x2_indices = x2.indices[:, :1]
+        x_indices = torch.cat([x1_indices, x2_indices])
+        x = spconv.SparseConvTensor(
+            x_feature, x_indices, x1.spatial_shape, x1.batch_size)
+        exclusive_feat, common_feat, exclusive_map, common_map = self.decouple(
+            x1, x2, confidence_lists)
+        veh_exclusive_feat = self.exclusive_encoder(x1, exclusive_feat, exclusive_map)
+        veh_common_feat = self.common_encoder(x1, common_feat, common_map)
+        x = x.replace_feature(self.fusion(veh_exclusive_feat.features, veh_common_feat.features))
+        x.indices = torch.cat([veh_exclusive_feat.indices, veh_common_feat.indices])
+
+        return x, [veh_exclusive_feat, veh_common_feat]
+

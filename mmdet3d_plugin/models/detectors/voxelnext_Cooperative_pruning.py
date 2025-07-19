@@ -162,7 +162,7 @@ class VoxelNeXtCoopertivePruning(VoxelNeXtCoopertive):
             infrastructure_points, img=infrastructure_img, img_metas=img_metas)
             
             #######use pruning to choose important points#########
-            "we use pruning to choose important points"
+            # "we use pruning to choose important points"
             voxel_feats_inf.update(gt_boxes=bboxes_3d_tensor)
             important_coords, unimportant_coords,important_voxels, unimportant_voxels, voxel_feats_inf = self.pruning(voxel_feats_inf)
             # "from coords to points"
@@ -170,7 +170,7 @@ class VoxelNeXtCoopertivePruning(VoxelNeXtCoopertive):
             # voxel_size = torch.tensor(self.pts_voxel_layer.voxel_size).to(device)
             compressed_points_inf = []
 
-            "voxels contains points in the voxel,first reshape into -1,4"
+            # "voxels contains points in the voxel,first reshape into -1,4"
             important_points = important_voxels.reshape(-1,important_voxels.shape[-1]) # Nxmax_points_per_voxelx4 -> N*max_points_per_voxelx4
             unimportant_points = unimportant_voxels.reshape(-1,unimportant_voxels.shape[-1]) # Nxmax_points_per_voxelx4 -> N*max_points_per_voxelx4
             for b_id in range(batch_size):   
@@ -279,27 +279,27 @@ class VoxelNeXtCoopertivePruning(VoxelNeXtCoopertive):
             """
             img_feats_inf, voxel_feats_inf = self.extract_feat(
             infrastructure_points, img=infrastructure_img, img_metas=img_metas)
-            #######use pruning to choose important points#########
-            "we use pruning to choose important points"
-            important_coords, unimportant_coords,important_voxels, unimportant_voxels, voxel_feats_inf = self.pruning(voxel_feats_inf)
-            # "from coords to points"
-            compressed_points_inf = []
-            "voxels contains points in the voxel,first reshape into -1,4"
-            important_points = important_voxels.reshape(-1,important_voxels.shape[-1]) # Nxmax_points_per_voxelx4 -> N*max_points_per_voxelx4
-            unimportant_points = unimportant_voxels.reshape(-1,unimportant_voxels.shape[-1]) # Nxmax_points_per_voxelx4 -> N*max_points_per_voxelx4
-            for b_id in range(batch_size):   
+            # #######use pruning to choose important points#########
+            # "we use pruning to choose important points"
+            # important_coords, unimportant_coords,important_voxels, unimportant_voxels, voxel_feats_inf = self.pruning(voxel_feats_inf)
+            # # "from coords to points"
+            # compressed_points_inf = []
+            # "voxels contains points in the voxel,first reshape into -1,4"
+            # important_points = important_voxels.reshape(-1,important_voxels.shape[-1]) # Nxmax_points_per_voxelx4 -> N*max_points_per_voxelx4
+            # unimportant_points = unimportant_voxels.reshape(-1,unimportant_voxels.shape[-1]) # Nxmax_points_per_voxelx4 -> N*max_points_per_voxelx4
+            # for b_id in range(batch_size):   
 
-                important_points_bid = important_points[important_coords[:,0] == b_id]
-                unimportant_points_bid = unimportant_points[unimportant_coords[:,0] == b_id]
+            #     important_points_bid = important_points[important_coords[:,0] == b_id]
+            #     unimportant_points_bid = unimportant_points[unimportant_coords[:,0] == b_id]
 
-                important_points_bid = self.quantisize(important_points_bid,0)
-                unimportant_points_bid = self.quantisize(unimportant_points_bid,1)
+            #     important_points_bid = self.quantisize(important_points_bid,0)
+            #     unimportant_points_bid = self.quantisize(unimportant_points_bid,1)
 
-                points_bid = torch.cat([important_points_bid,unimportant_points_bid],dim=0)
-                compressed_points_inf.append(points_bid)
-            img_feats_inf, voxel_feats_inf = self.extract_feat(
-            compressed_points_inf, img=infrastructure_img, img_metas=img_metas)
-            #######use pruning to choose important points#########
+            #     points_bid = torch.cat([important_points_bid,unimportant_points_bid],dim=0)
+            #     compressed_points_inf.append(points_bid)
+            # img_feats_inf, voxel_feats_inf = self.extract_feat(
+            # compressed_points_inf, img=infrastructure_img, img_metas=img_metas)
+            # #######use pruning to choose important points#########
             pts_feats_inf = self.inf_backbone_3d(voxel_feats_inf)
             pts_feats = self.feature_fusion(pts_feats, pts_feats_inf, img_metas)
         batch_dict = pts_feats

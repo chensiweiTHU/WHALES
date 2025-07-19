@@ -88,9 +88,9 @@ def single_gpu_test(model,
         batch_size = len(result)
         for _ in range(batch_size):
             prog_bar.update()
-    object_fusion =True # single card only
+    object_fusion = False # single card only
     if object_fusion:
-        results = get_object_fusion_results(results,dataset,model.module.pts_bbox_head.test_cfg,model.src_device_obj)
+        results = get_object_fusion_results(results, dataset, model.module.pts_bbox_head.test_cfg, model.src_device_obj)
     return results
 
     #     object_fusion =False # single card only

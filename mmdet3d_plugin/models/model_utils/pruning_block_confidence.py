@@ -13,7 +13,7 @@ import copy
 import time
 from pcdet.ops.roiaware_pool3d.roiaware_pool3d_utils import points_in_boxes_gpu
 from ...models.backbones_3d.focal_sparse_conv.focal_sparse_utils import FocalLoss
-
+from ...utils.spconv_utils import replace_feature
 import cv2
 import numpy as np
 
@@ -364,61 +364,6 @@ class DynamicFocalPruningConv(spconv.SparseModule):
         
         return out, batch_dict
 
-class SpatialAttentionWithCoords(nn.Module):
-    def __init__(self, embed_dim, num_heads, window_size):
-        super(SpatialAttentionWithCoords, self).__init__()
-        self.embed_dim = embed_dim
-        self.num_heads = num_heads
-        self.head_dim = embed_dim // num_heads
-        assert self.head_dim * num_heads == self.embed_dim, "embed_dim must be divisible by num_heads"
-
-        self.qkv_proj = nn.Linear(embed_dim, embed_dim * 3)
-        self.out_proj = nn.Linear(embed_dim, embed_dim)
-        self.scale = self.head_dim ** -0.5
-        self.window_size = window_size  # 定义局部注意力范围
-
-    def forward(self, x, voxel_coords):
-        batch_size, seq_len, embed_dim = x.size()
-        qkv = self.qkv_proj(x).reshape(batch_size, seq_len, 3, self.num_heads, self.head_dim)
-        qkv = qkv.permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]
-
-        # relative coords
-        coords = voxel_coords[:, 1:].float()  # 取出 [z_idx, y_idx, x_idx] 部分 (num_voxels, 3)
-        relative_coords = coords[:, None, :] - coords[None, :, :]  # (num_voxels, num_voxels, 3)
-
-        # relative distances
-        relative_distances = relative_coords.abs().sum(-1)  # (num_voxels, num_voxels)
-
-        # initialize attention scores
-        attn_scores = torch.zeros(batch_size, self.num_heads, seq_len, seq_len, device=x.device)
-
-        for i in range(seq_len):
-            # window range
-            dist = relative_distances[i]  # (seq_len,)
-            mask = dist < self.window_size
-
-            # local attention scores
-            local_q = q[:, :, i, :]  # (batch_size, num_heads, head_dim)
-            local_k = k[:, :, mask, :]  # (batch_size, num_heads, window_size, head_dim)
-            local_attn_scores = torch.matmul(local_q.unsqueeze(2), local_k.transpose(-2, -1)) * self.scale  # (batch_size, num_heads, 1, window_size)
-
-            attn_scores[:, :, i, mask] = local_attn_scores.squeeze(2)
-
-        attn_weights = F.softmax(attn_scores, dim=-1)
-
-        # calculate attention output
-        attn_output = torch.matmul(attn_weights, v)  # (batch_size, num_heads, seq_len, head_dim)
-        attn_output = attn_output.permute(0, 2, 1, 3).reshape(batch_size, seq_len, embed_dim)
-
-        # output linear projection
-        output = self.out_proj(attn_output)
-
-        # calculate importance
-        importance = attn_weights.sum(dim=-1).mean(dim=1)  # (batch_size, seq_len)
-        return output, importance
-
-
 class DynamicFocalPruningDownsample(spconv.SparseModule):
     def __init__(self, 
                  in_channels, 
@@ -468,16 +413,29 @@ class DynamicFocalPruningDownsample(spconv.SparseModule):
     
         if pred_mode=="learnable":
             assert pred_kernel_size is not None
-            self.pred_conv = spconv.SubMConv3d(
+            self.pred_conv_in = spconv.SubMConv3d(
                     in_channels,
-                    1,
+                    64,
                     kernel_size=pred_kernel_size,
                     stride=1,
                     padding=padding,
                     bias=False,
-                    indice_key=indice_key + "_pred_conv",
+                    indice_key=indice_key + "_pred_conv_in",
                     algo=algo
                 )
+            self.pred_bn = nn.BatchNorm1d(num_features=64)
+            self.pred_leaky_relu = nn.LeakyReLU(negative_slope=0.1)
+            self.pred_conv_out = spconv.SubMConv3d(
+                    64,
+                    4,
+                    kernel_size=1,
+                    stride=1,
+                    padding=0,
+                    bias=False,
+                    indice_key=indice_key + "_pred_conv_out",
+                    algo=algo
+                )
+
 
         self.conv_block = spconv.SubMConv3d(
                                         in_channels,
@@ -557,7 +515,7 @@ class DynamicFocalPruningDownsample(spconv.SparseModule):
         return x_im
 
     def calulate_focal_loss(self, x, voxel_importance, batch_dict, voxel_stride):
-        spatial_indices = x.indices[:, 1:] * voxel_stride
+        spatial_indices = (x.indices[:, 1:] + voxel_importance[:,1:]) * voxel_stride
         spatial_shape = torch.tensor(x.spatial_shape,device=x.features.device).float()
         spatial_shape[0] = spatial_shape[0] - 1 # we added 1 before
         voxel_size = (self.point_cloud_range[3:] - self.point_cloud_range[:3])/spatial_shape
@@ -571,7 +529,7 @@ class DynamicFocalPruningDownsample(spconv.SparseModule):
             if True:
                 index=x.indices[:, 0]
                 batch_index = index == b
-                mask_voxel = voxel_importance[batch_index]
+                mask_voxel = voxel_importance[:,:1][batch_index]
                 if torch.max(batch_index)==False:
                     continue
                 voxels_3d_batch = voxels_3d[batch_index].unsqueeze(0)
@@ -591,10 +549,10 @@ class DynamicFocalPruningDownsample(spconv.SparseModule):
 
         return loss_box_of_pts
 
-    def reset_spatial_shape(self, x):
+    def reset_spatial_shape(self, x, batch_dict):
         indices = x.indices
         features = x.features
-        conv_valid_mask = ((indices[:,1:] % 2).sum(1)==0)
+        conv_valid_mask = ((indices[:,1:4] % 2).sum(1)==0)
         
         pre_spatial_shape = x.spatial_shape
         new_spatial_shape = []
@@ -605,17 +563,20 @@ class DynamicFocalPruningDownsample(spconv.SparseModule):
                 new_spatial_shape.append(1)
             else:
                 new_spatial_shape.append(size)
-        indices[:,1:] = indices[:,1:] // 2
-        coords = indices[:,1:][conv_valid_mask]
+        indices[:,1:4] = indices[:,1:4] // 2
+        coords = indices[:,1:4][conv_valid_mask]
         spatial_indices = (coords[:, 0] >0) * (coords[:, 1] >0) * (coords[:, 2] >0)  * \
             (coords[:, 0] < new_spatial_shape[0]) * (coords[:, 1] < new_spatial_shape[1]) * (coords[:, 2] < new_spatial_shape[2])
 
         x = spconv.SparseConvTensor(features[conv_valid_mask][spatial_indices], indices[conv_valid_mask][spatial_indices].contiguous(), new_spatial_shape, x.batch_size)
+        # print("features shape:", features[conv_valid_mask][spatial_indices].shape, "indices shape:", indices[conv_valid_mask][spatial_indices].shape, "new_spatial_shape:", new_spatial_shape, "batch_size:", x.batch_size)
+        # print("conv_valid_mask shape:", conv_valid_mask.shape, "spatial_indices shape:", spatial_indices.shape)
 
-        return x
+        return x, batch_dict
 
 
     def forward(self, x, batch_dict):
+        # print("x shape:", x.features.shape)
         if self.progress_subm_downsample and self.training:
             cur_epoch = batch_dict["cur_epoch"]
             total_epochs = batch_dict["total_epochs"]
@@ -624,8 +585,12 @@ class DynamicFocalPruningDownsample(spconv.SparseModule):
         if self.pred_mode=="learnable":
             # print("check----------------------")
             x_ = x
-            x_conv_predict = self.pred_conv(x_)
-            voxel_importance = self.sigmoid(x_conv_predict.features) # [N, 1]
+            x_conv_predict = self.pred_conv_in(x_)
+            x_conv_predict = replace_feature(x_conv_predict, self.pred_bn(x_conv_predict.features))
+            x_conv_predict = replace_feature(x_conv_predict, self.pred_leaky_relu(x_conv_predict.features))         
+            x_conv_predict = self.pred_conv_out(x_conv_predict)
+            voxel_importance = self.sigmoid(x_conv_predict.features) # [N, 4]
+            # print("voxel_importance shape:", voxel_importance.shape)
         elif self.pred_mode=="attn_pred":
             # print("pruning ratio:", self.pruning_ratio, "pruning_mode:", self.pruning_mode, "pred_mode:", self.pred_mode)
             x_features = x.features
@@ -634,15 +599,18 @@ class DynamicFocalPruningDownsample(spconv.SparseModule):
         else:
              raise Exception('pred_mode is not define')
 
-        x_im, x_nim = self.gemerate_sparse_tensor(x, voxel_importance)
+        x_im, x_nim = self.gemerate_sparse_tensor(x, voxel_importance[:,:1])
+        # print("x_im shape:", x_im.features.shape, "x_nim shape:", x_nim.features.shape)
         out = self.combine_feature(x_im, x_nim, remove_repeat=True)
+        # print("out shape:", out.features.shape)
         out = self.conv_block(out)
+        # print("conv_out shape:", out.features.shape)
 
-        out = self.reset_spatial_shape(out)
+        out, batch_dict = self.reset_spatial_shape(out,batch_dict)
         # print("x shape:", x.features.shape, "x_im:", x_im.features.shape, "x_nim:", x_nim.features.shape, "out:", out.features.shape)
         if self.training and self.loss_mode == "l1":
             # print("use_l1_loss-----------------")
-            l1_loss = voxel_importance.mean()
+            l1_loss = voxel_importance[:,:1].mean()
             batch_dict['l1_loss'] += l1_loss
         
         if self.training and (self.loss_mode == "focal_sprs" or self.loss_mode == "focal_all"):

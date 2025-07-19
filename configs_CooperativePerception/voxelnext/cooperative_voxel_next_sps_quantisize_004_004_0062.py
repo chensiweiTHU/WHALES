@@ -32,15 +32,6 @@ model = dict(
             type='MeanVFE',
             num_point_features=num_point_features
             ),
-    pruning=dict(
-        type='VoxelResSPSQuantiseizer',
-        input_channels = num_point_features,
-        grid_size = grid_size,
-        spconv_kernel_sizes=[3,3], 
-        channels=[16,32], 
-        point_cloud_range=[-3, -46.08, 0, 1, 46.08, 92.16],
-        downsample_pruning_ratio = [0.8,],
-    ),
     backbone_3d=dict(
         type='VoxelResBackBone8xVoxelNeXtSPS',
         input_channels = num_point_features,
@@ -127,8 +118,8 @@ model = dict(
 file_client_args = dict(backend='disk')
 
 data = dict(
-    samples_per_gpu=2,
-    workers_per_gpu=2,
+    samples_per_gpu=4,
+    workers_per_gpu=4,
     train=dict(
         type='RepeatDataset',
         times=2,

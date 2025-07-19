@@ -8,6 +8,7 @@ from .spconv_backbone_voxelnext_sps import VoxelResBackBone8xVoxelNeXtSPS
 from .spconv_backbone_voxelnext2d_sps import VoxelResBackBone8xVoxelNeXt2DSPS
 from .spconv_unet import UNetV2
 from .spconv_sps_quantisizer import VoxelResSPSQuantiseizer
+from .spconv_sps_attn_quantisizer import VoxelResSPSAttnQuantiseizer
 __all__ = [
         'VoxelBackBone8x',
         'UNetV2',
@@ -18,7 +19,8 @@ __all__ = [
         'VoxelResBackBone8xVoxelNeXt2DSPS',
         'PillarBackBone8x',
         'PillarRes18BackBone8x',
-        'VoxelResSPSQuantiseizer'
+        'VoxelResSPSQuantiseizer',
+        'VoxelResSPSAttnQuantiseizer'
 ]
 # __all__ = {
 #     'VoxelBackBone8x': VoxelBackBone8x,

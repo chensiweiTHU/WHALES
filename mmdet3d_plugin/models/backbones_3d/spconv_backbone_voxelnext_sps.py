@@ -5,7 +5,7 @@ from spconv.core import ConvAlgo
 from mmdet3d.models.builder import BACKBONES
 import numpy as np
 from ...utils.spconv_utils import replace_feature, spconv
-from ...models.model_utils.pruning_block import DynamicFocalPruningDownsample
+from ...models.model_utils.pruning_block_confidence import DynamicFocalPruningDownsample
 
 
 class SparseSequentialBatchdict(spconv.SparseSequential):
@@ -21,7 +21,7 @@ class SparseSequentialBatchdict(spconv.SparseSequential):
 
 class PostActBlock(spconv.SparseModule):
     def __init__(self, in_channels, out_channels, kernel_size, indice_key=None, stride=1, padding=0, pruning_ratio=0.5, point_cloud_range=[-3, -46.08, 0, 1, 46.08, 92.16], #[0, -46.08, -3, 92.16, 46.08, 1],
-                   conv_type='subm', norm_fn=None, loss_mode=None, algo=ConvAlgo.Native, downsample_pruning_mode="topk"):
+                   voxel_stride=1,conv_type='subm', norm_fn=None, loss_mode=None, algo=ConvAlgo.Native, downsample_pruning_mode="topk"):
         super().__init__()
         self.indice_key = indice_key
         self.in_channels = in_channels
@@ -35,7 +35,7 @@ class PostActBlock(spconv.SparseModule):
         elif conv_type == 'inverseconv':
             self.conv = spconv.SparseInverseConv3d(in_channels, out_channels, kernel_size, indice_key=indice_key, bias=False)
         elif conv_type == "dynamicdownsample_attn":
-            self.conv = DynamicFocalPruningDownsample(in_channels, out_channels, kernel_size, stride=stride, padding=padding, indice_key=indice_key, bias=False, 
+            self.conv = DynamicFocalPruningDownsample(in_channels, out_channels, kernel_size, stride=stride, padding=padding, indice_key=indice_key, bias=False, voxel_stride=voxel_stride,
                 pruning_ratio=pruning_ratio, pred_mode="learnable", pred_kernel_size=3, loss_mode=loss_mode, algo=algo, pruning_mode=downsample_pruning_mode, point_cloud_range=point_cloud_range)
         else:
             raise NotImplementedError
@@ -134,7 +134,7 @@ class VoxelResBackBone8xVoxelNeXtSPS(nn.Module):
 
         self.conv2 = SparseSequentialBatchdict(
             # [1600, 1408, 41] <- [800, 704, 21]
-            block(channels[0], channels[1], spconv_kernel_sizes[0], norm_fn=norm_fn, stride=2, padding=int(spconv_kernel_sizes[0]//2), \
+            block(channels[0], channels[1], spconv_kernel_sizes[0], norm_fn=norm_fn, stride=2, padding=int(spconv_kernel_sizes[0]//2), voxel_stride=1,\
                 indice_key='spconv2', conv_type=self.downsample_type[0], pruning_ratio=self.downsample_pruning_ratio[0],loss_mode="focal_sprs",point_cloud_range=self.point_cloud_range),
             SparseBasicBlock(channels[1], channels[1], norm_fn=norm_fn, indice_key='res2'),
             SparseBasicBlock(channels[1], channels[1], norm_fn=norm_fn, indice_key='res2'),
@@ -142,7 +142,7 @@ class VoxelResBackBone8xVoxelNeXtSPS(nn.Module):
 
         self.conv3 = SparseSequentialBatchdict(
             # [800, 704, 21] <- [400, 352, 11]
-            block(channels[1], channels[2], spconv_kernel_sizes[1], norm_fn=norm_fn, stride=2, padding=int(spconv_kernel_sizes[1]//2), \
+            block(channels[1], channels[2], spconv_kernel_sizes[1], norm_fn=norm_fn, stride=2, padding=int(spconv_kernel_sizes[1]//2), voxel_stride=2,\
                 indice_key='spconv3', conv_type=self.downsample_type[1], pruning_ratio=self.downsample_pruning_ratio[1],loss_mode="focal_sprs",point_cloud_range=self.point_cloud_range),
             SparseBasicBlock(channels[2], channels[2], norm_fn=norm_fn, indice_key='res3'),
             SparseBasicBlock(channels[2], channels[2], norm_fn=norm_fn, indice_key='res3'),
@@ -150,7 +150,7 @@ class VoxelResBackBone8xVoxelNeXtSPS(nn.Module):
 
         self.conv4 = SparseSequentialBatchdict(
             # [400, 352, 11] <- [200, 176, 6]
-            block(channels[2], channels[3], spconv_kernel_sizes[2], norm_fn=norm_fn, stride=2, padding=int(spconv_kernel_sizes[2]//2), \
+            block(channels[2], channels[3], spconv_kernel_sizes[2], norm_fn=norm_fn, stride=2, padding=int(spconv_kernel_sizes[2]//2), voxel_stride=4,\
                 indice_key='spconv4', conv_type=self.downsample_type[2], pruning_ratio=self.downsample_pruning_ratio[2],loss_mode="focal_sprs",point_cloud_range=self.point_cloud_range),
             SparseBasicBlock(channels[3], channels[3], norm_fn=norm_fn, indice_key='res4'),
             SparseBasicBlock(channels[3], channels[3], norm_fn=norm_fn, indice_key='res4'),

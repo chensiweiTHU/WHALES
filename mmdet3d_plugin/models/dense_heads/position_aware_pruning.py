@@ -208,7 +208,7 @@ class FSTRHead(BaseModule):
                 downsample_scale=8,
                 scalar=10,
                 noise_scale=1.0,
-                noise_trans=0.1,
+                noise_trans=0.0,
                 dn_weight=1.0,
                 split=0.75,
                 depth_num=64,

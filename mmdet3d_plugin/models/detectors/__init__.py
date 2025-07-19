@@ -25,6 +25,8 @@ from .voxelnext_Cooperative import VoxelNeXtCoopertive
 from .voxelnext_Cooperative_pruning import VoxelNeXtCoopertivePruning
 from .voxelnext_Cooperative_Temporal import VoxelNeXtCoopertiveTemporal
 from .voxelnext_Cooperative_pruning_confidence import VoxelNeXtCoopertivePruningConfidence
+from .voxelnext_Cooperative_pruning_raw_level import VoxelNeXtCoopertivePruningRawLevel
+from .voxelnext_Cooperative_pruning_importance import VoxelNeXtCoopertivePruningImportance
 from .fstr import FSTRDetector
 from .v2x_voxelnet import V2XVoxelNet
 from .feature_flownet import FeatureFlowNet
@@ -32,7 +34,8 @@ from .feature_flownet import FeatureFlowNet
 __all__ = [
     'MVXTwoStageDetector', 'VoxelNet', 'OpenCoodDetector', 'DynamicMVXFasterRCNN', 'MVXFasterRCNN','FSTRDetector',
     'FCooper_opencood', 'FCooper', 'V2VNet', 'PointPillarOpenCOOD', 'VoxelNeXt', 'V2XVoxelNet', 'FeatureFlowNet', 
-    'VoxelNeXtCoopertive', 'VoxelNeXtCoopertiveTemporal', 'VoxelNeXtCoopertivePruning', 'VoxelNeXtCoopertivePruningConfidence'
+    'VoxelNeXtCoopertive', 'VoxelNeXtCoopertiveTemporal', 'VoxelNeXtCoopertivePruning', 'VoxelNeXtCoopertivePruningConfidence',
+    'VoxelNeXtCoopertivePruningRawLevel','VoxelNeXtCoopertivePruningImportance'
 ]
 # __all__ = [
 #     'Base3DDetector', 'VoxelNet', 'DynamicVoxelNet', 'MVXTwoStageDetector',

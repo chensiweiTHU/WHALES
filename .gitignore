@@ -1,5 +1,5 @@
 # Byte-compiled / optimized / DLL files
-__pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 *.ipynb
@@ -32,9 +32,12 @@ MANIFEST
 *.manifest
 *.spec
 visual_old/
+data_process/
 results/
+opencood_results/
 *copy.py
 *copy 2.py
+.dist_test/
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
@@ -74,7 +77,7 @@ docs/_build/
 target/
 
 # Jupyter Notebook
-.ipynb_checkpoints
+**/.ipynb_checkpoints
 
 # pyenv
 .python-version
@@ -103,6 +106,10 @@ venv.bak/
 
 # mkdocs documentation
 /site
+data/
+checkpoints/
+ckpts/
+spconv_debug/
 
 # mypy
 .mypy_cache/

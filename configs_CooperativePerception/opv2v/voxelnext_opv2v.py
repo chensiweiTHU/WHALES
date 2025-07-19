@@ -10,7 +10,7 @@ _base_ = [
 ]
 
 # dataset_type = 'DolphinsDataset'
-# data_root = 'data/dolphins-new/'
+# data_root = 'data/whales/'
 # Input modality for Dolphins2 dataset, this is consistent with the submission
 # format which requires the information in input_modality.
 input_modality = dict(

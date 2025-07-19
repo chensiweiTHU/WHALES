@@ -188,10 +188,10 @@ class VoxelNeXtCoopertivePruningConfidence(VoxelNeXtCoopertive):
                 unimportant_points_bid = unimportant_points[unimportant_coords[:,0] == b_id]
 
                 important_points_bid = self.quantisize(important_points_bid,0)
-                unimportant_points_bid = self.quantisize(unimportant_points_bid,1)
+                # unimportant_points_bid = self.quantisize(unimportant_points_bid,1)
 
-                points_bid = torch.cat([important_points_bid,unimportant_points_bid],dim=0)
-                compressed_points_inf.append(points_bid)
+                # points_bid = torch.cat([important_points_bid,unimportant_points_bid],dim=0)
+                compressed_points_inf.append(important_points_bid)
                 # important_coords_bid = important_coords[important_coords[:,0] == b_id][:,1:] # ZYX
                 # "from ZYX to XYZ"
                 # important_coords_bid = important_coords_bid[:,[2,1,0]]
@@ -222,7 +222,7 @@ class VoxelNeXtCoopertivePruningConfidence(VoxelNeXtCoopertive):
             # else:
             #     pts_feats = self.feature_fusion_warp(pts_feats, pts_feats_inf, img_metas)
         batch_dict.update(pts_feats)
-        output_dict = self.dense_head(batch_dict, img_metas) # img_feats for future use
+        output_dict = self.dense_head(batch_dict, img_metas) 
         if not self.training:
             print('output_dict[0].keys():',output_dict[0][0].keys())
         loss_inputs = [gt_bboxes_3d, gt_labels_3d, output_dict]
@@ -305,10 +305,10 @@ class VoxelNeXtCoopertivePruningConfidence(VoxelNeXtCoopertive):
                 unimportant_points_bid = unimportant_points[unimportant_coords[:,0] == b_id]
 
                 important_points_bid = self.quantisize(important_points_bid,0)
-                unimportant_points_bid = self.quantisize(unimportant_points_bid,1)
+                # unimportant_points_bid = self.quantisize(unimportant_points_bid,1)
 
-                points_bid = torch.cat([important_points_bid,unimportant_points_bid],dim=0)
-                compressed_points_inf.append(points_bid)
+                # points_bid = torch.cat([important_points_bid,unimportant_points_bid],dim=0)
+                compressed_points_inf.append(important_points_bid)
             img_feats_inf, voxel_feats_inf = self.extract_feat(
             compressed_points_inf, img=infrastructure_img, img_metas=img_metas)
             #######use pruning to choose important points#########

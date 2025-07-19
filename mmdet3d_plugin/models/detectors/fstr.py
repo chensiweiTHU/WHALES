@@ -30,13 +30,13 @@ class FSTRDetector(MVXTwoStageDetector):
         """Initialize model weights."""
         super(FSTRDetector, self).init_weights()
 
-    def extract_feat(self, points, img_metas):
+    def extract_feat(self, points, img_metas, gt_boxes=None):
         """Extract features from images and points."""
-        pts_feats = self.extract_pts_feat(points, img_metas)
+        pts_feats = self.extract_pts_feat(points, img_metas,gt_boxes=gt_boxes)
         return pts_feats
 
     @force_fp32(apply_to=('pts'))    
-    def extract_pts_feat(self, pts, img_metas):
+    def extract_pts_feat(self, pts, img_metas, gt_boxes=None):
         """Extract features of points."""
         if not self.with_pts_bbox:
             return None
@@ -46,8 +46,16 @@ class FSTRDetector(MVXTwoStageDetector):
         voxel_features = self.pts_voxel_encoder(voxels, num_points, coors,
                                                 )
         batch_size = coors[-1, 0] + 1
-        print('voxel_features',voxel_features.shape)
-        x = self.pts_middle_encoder(voxel_features, coors, batch_size)
+        # print('voxel_features',voxel_features.shape)
+        backbone_input = dict()
+        backbone_input.update({
+            'voxel_features': voxel_features,
+            'batch_size':batch_size,
+            'voxel_coords': coors,
+            'gt_boxes': gt_boxes})
+        
+        
+        x = self.pts_backbone(backbone_input)
         return x
 
     @torch.no_grad()
@@ -112,10 +120,35 @@ class FSTRDetector(MVXTwoStageDetector):
         Returns:
             dict: Losses of different branches.
         """
+        batch_dict = dict()
+        device = points[0].device
+        batch_size = len(points)
+        max_box_num = max([len(bboxes) for bboxes in gt_bboxes_3d])
+        box_dim = gt_bboxes_3d[0].tensor.shape[-1]
+        bboxes_3d_tensor = torch.stack([
+            torch.cat([b.tensor, torch.zeros(max_box_num - len(b), box_dim).to(b.tensor.device)])
+            for b in gt_bboxes_3d
+        ]).to(device)
+        # get first 7 dims
+        "first filter out -1 labels in DAIR-V2X dataset by FFNet"
+        if self.pts_bbox_head.num_classes[0]>1:
+            for i,l in enumerate(gt_labels_3d):
+                gt_labels_3d[i][l == -1] = self.pts_bbox_head.num_classes[0]-1
+        else:
+            gt_bboxes_3d = [bboxes_3d_tensor[i][l != -1] for i,l in enumerate(gt_labels_3d)]
+            gt_labels_3d = [l[l != -1] for l in gt_labels_3d]
+        gt_labels_3d_tensor = torch.stack([
+            torch.cat([l.float()+1, torch.zeros(max_box_num - len(l)).to(l.device)])
+            for l in gt_labels_3d
+        ]).to(device)
+        bboxes_3d_tensor = torch.cat([bboxes_3d_tensor, gt_labels_3d_tensor.unsqueeze(-1)], dim=-1)
+        batch_dict['gt_boxes'] = bboxes_3d_tensor
+        batch_dict['gt_bboxes_3d'] = gt_bboxes_3d
         # nvtx.range_push('forward')
         # nvtx.range_push('voxel_backbone')
         pts_feats = self.extract_feat(
-            points=points, img_metas=img_metas)
+            points=points, img_metas=img_metas,gt_boxes=bboxes_3d_tensor)
+        # pts_feats.update(gt_bboxes_3d=gt_bboxes_3d)
         # nvtx.range_pop()
         # nvtx.range_push('fstr_head')
         losses = dict()
@@ -139,7 +172,7 @@ class FSTRDetector(MVXTwoStageDetector):
         """Forward function for point cloud branch.
 
         Args:
-            pts_feats (list[torch.Tensor]): Features of point cloud branch
+            pts_feats (dict): Features of point cloud branch
             gt_bboxes_3d (list[:obj:`BaseInstance3DBoxes`]): Ground truth
                 boxes for each sample.
             gt_labels_3d (list[torch.Tensor]): Ground truth labels for
@@ -159,6 +192,7 @@ class FSTRDetector(MVXTwoStageDetector):
     def forward_test(self,
                      points=None,
                      img_metas=None, 
+                     rescale = False,
                      **kwargs):
         """
         Args:
@@ -186,8 +220,10 @@ class FSTRDetector(MVXTwoStageDetector):
                 'num of augmentations ({}) != num of image meta ({})'.format(
                     len(points), len(img_metas)))
 
+        batch_size = len(points)
+
         if num_augs == 1:
-            return self.simple_test(points[0], img_metas[0],**kwargs)
+            return self.simple_test(points[0], img_metas[0], rescale=rescale)
         else:
             return self.aug_test(points, img_metas, **kwargs)
     
@@ -214,4 +250,8 @@ class FSTRDetector(MVXTwoStageDetector):
                 pts_feats, img_metas, rescale=rescale)
             for result_dict, pts_bbox in zip(bbox_list, bbox_pts):
                 result_dict['pts_bbox'] = pts_bbox
+                result_dict['img_metas'] = img_metas
+                result_dict['boxes_3d'] = pts_bbox['boxes_3d']
+                result_dict['scores_3d'] = pts_bbox['scores_3d']
+                result_dict['labels_3d'] = pts_bbox['labels_3d']
         return bbox_list

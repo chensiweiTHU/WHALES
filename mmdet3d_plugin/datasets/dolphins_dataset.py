@@ -633,9 +633,10 @@ class DolphinsDataset(Custom3DDataset):
         dolphins = Dolphins(
             version=self.version, dataroot=self.data_root, verbose=False,train_test='test')
         eval_set_map = {
-            'v1.0-mini': 'mini_val',
-            'v1.0-trainval': 'val',
-            "":"val",
+            'v1.0-mini': "mini_val",
+            'v1.0-trainval': "val",
+            "": "val",
+            "v1.0": "val",
             'none':"val"
         }
         dolphins_eval = DolphinsEval(
