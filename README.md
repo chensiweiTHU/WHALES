@@ -83,7 +83,11 @@ We use mAP and NDS as our benchmark.
 
 ## Scheduling Algorithms
 
-We focus on **agent scheduling** in our experiments, We implement scheduling algorithms in `./mmdet3d_plugin/datasets/pipelines/cooperative_perception.py`. You can also implement other scheduling algorithms in this file.
+We focus on **agent scheduling** in our experiments, and we implement these algorithms in `./mmdet3d_plugin/datasets/pipelines/cooperative_perception.py`. 
+
+Furthermore, we proposed Coverage-Aware Historical Scheduler (CAHS) to provide a communication-aware method that prioritizes agent collaboration based on historical coverage and anticipated perception gains. ![CAHS overview](imgs/overview.svg)
+
+You can also implement other scheduling algorithms in this file.
 
 
 ## Experimental Results
