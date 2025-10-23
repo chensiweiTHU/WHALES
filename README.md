@@ -107,17 +107,26 @@ We focus on **agent scheduling** in our experiments, We implement scheduling alg
 
 * We use sparse convolution to fuse the VoxelNext features
 
-### mAP Scores on 3D Object Detection using Different Scheduling Policies (50m/100m)
+### mAP Scores on 3D Object Detection using Different **Single-Agent Scheduling** Policies (50m / 100m)
 
-| Inference \ Training | No Fusion | Closest Agent | Single Random | Multiple Random | Full Communication |
-|-----------------------|-----------|---------------|---------------|-----------------|--------------------|
-| **No Fusion**         | 50.9/26.2  | 50.9/23.3     | 51.3/25.3     | 50.3/22.9       | 45.6/18.8          |
-| **Closest Agent**     | 39.9/20.3  | 58.4/30.2     | 58.3/32.6     | 57.7/30.5       | **55.4**/10.8      |
-| **Single Random**     | 43.3/22.8  | 57.9/31.0     | 58.4/33.3     | 57.7/31.4       | 55.0/14.6          |
-| **MASS**        | **55.5**/11.0 | **58.8**/33.7 | **58.9**/34.0 | 57.3/32.3       | 54.1/27.4          |
-| **Historical Best**   | 54.8/29.6  | 58.6/31.7     | **58.9**/34.0 | **58.3**/32.6   | 54.1/27.4          |
-| **Multiple Random**   | **34.5**/16.9 | 60.7/35.1     | 61.2/37.1     | 61.4/36.4       | 58.8/12.9          |
-| **Full Communication**| 29.1/10.5  | **63.7**/38.4  | **64.0**/39.9 | **64.7**/41.3   | **65.1**/39.2     |
+| Inference \\ Training | No Fusion | Closest Agent | Single Random | Multiple Random | Full Communication |
+|------------------------|-----------|---------------|---------------|-----------------|--------------------|
+| **No Fusion (Baseline)** | 50.9 / 26.2 | 50.9 / 23.3 | 51.3 / 25.3 | 50.3 / 22.9 | 45.6 / 18.8 |
+| **Closest Agent** | 39.9 / 20.3 | 58.4 / 30.2 | 58.3 / 32.6 | 57.3 / 30.5 | 55.4 / 10.8 |
+| **Single Random** | 43.3 / 22.8 | 57.9 / 31.0 | 58.4 / 33.3 | 57.7 / 31.4 | 55.0 / 14.6 |
+| **MASS** | 55.5 / 11.0 | 58.8 / **33.7** | 58.9 / 34.0 | 57.3 / 32.3 | 54.1 / 27.4 |
+| **CAHS (Proposed)** | **56.1** / **29.6** | **62.5** / 31.7 | **62.7 / 35.9** | **58.3 / 32.6** | **59.9 / 31.0** |
+
+---
+
+### mAP Scores on 3D Object Detection using Different **Multi-Agent Scheduling** Policies (50m / 100m)
+
+| Inference \\ Training | No Fusion | Closest Agent | Single Random | Multiple Random | Full Communication |
+|------------------------|-----------|---------------|---------------|-----------------|--------------------|
+| **Multiple Random** | 34.5 / **16.9** | 60.7 / 35.1 | 61.2 / 37.1 | 61.4 / 36.4 | 58.8 / 12.9 |
+| **Full Communication** | 29.1 / 10.5 | 63.7 / 38.4 | 63.7 / 39.1 | **64.0 / 41.1** | 65.1 / 39.2 |
+| **MASS** | **54.6** / 13.4 | 64.9 / 39.7 | 65.0 / 40.5 | 63.7 / 40.4 | 63.5 / 36.4 |
+| **CAHS (Proposed)** | 53.7 / 14.2 | **65.3 / 40.1** | **65.1 / 42.0** | 63.9 / 40.6 | **65.2 / 39.2** |
 
 ## TODOs
 - Publish the dataset and checkpoints on Hugging Face
