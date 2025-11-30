@@ -73,7 +73,7 @@ model = dict(
         nms_pre=100,
         max_num=50))
 
-dataset_type = 'DolphinsDataset'
+dataset_type = 'WhalesDataset'
 data_root = 'data/whales/'
 class_names = ['Vehicle', 'Pedestrian', 'Cyclist']
 input_modality = dict(use_lidar=True, use_camera=True)
