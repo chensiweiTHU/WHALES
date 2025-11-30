@@ -1,7 +1,12 @@
-# WHALES
+<h1 align="center">WHALES</h1>
 
-## Introduction
-WHALES (**W**ireless en**H**anced **A**utonomous vehicles with **L**arge number of **E**ngaged agent**S**) is a CARLA-based cooperative perception dataset averaging 8.4 agents per sequence. It captures diverse viewpoints, agent behaviors, and multitask interactions to study scheduling, perception, and planning under realistic multi-agent constraints.
+<h3 align="center">A Multi-Agent Scheduling Dataset for Enhanced Cooperation in Autonomous Driving</h3>
+
+<p align="center">
+  <a href="https://arxiv.org/abs/2411.13340">
+    <img src="https://img.shields.io/badge/arXiv-2411.13340-b31b1b.svg" alt="arXiv">
+  </a>
+</p>
 
 ## News
 - **2025-11-21** – Released WHALES dataset v1.0 with cooperative scheduling benchmarks.
