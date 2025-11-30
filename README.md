@@ -50,7 +50,7 @@ WHALES (**W**ireless en**H**anced **A**utonomous vehicles with **L**arge number 
 3. *(Optional)* Install [OpenCOOD](https://github.com/DerrickXuNu/OpenCOOD) for additional cooperative baselines.
 
 ### Data Preparation
-1. **Download** the full dataset from Google Drive: https://drive.google.com/file/d/1XPbTyNLznpltdkzz-yKPKRIq1hASDN7X/view.
+1. **Download** the full dataset from Google Drive: [Download Whales](https://drive.google.com/file/d/1XPbTyNLznpltdkzz-yKPKRIq1hASDN7X/view).
 2. Place extracted files under `./data/whales/`.
 3. Preprocess:
    ```python
@@ -93,7 +93,6 @@ CAHS prioritizes collaborators by historical coverage and predicted gains.
 | F-Cooper | **75.4 / 52.8** | 50.1 / 9.1 | 44.7 / 20.4 | 56.8 / 27.4 | 0.117 / 0.205 | **0.874 / 0.879** | 1.074 / 1.206 | 1.358 / 1.449 | 38.5 / 22.9 |
 | Raw-level Fusion | 71.3 / 48.9 | 38.1 / 8.5 | 40.7 / 16.3 | 50.0 / 24.6 | 0.135 / 0.242 | 0.875 / 0.882 | **1.062 / 1.242** | 1.308 / 1.469 | 34.9 / 21.1 |
 | *VoxelNeXt | 71.5 / 50.6 | **60.1 / 35.4** | **47.6 / 21.9** | **59.7 / 35.9** | **0.085 / 0.159** | 0.877 / 0.878 | 1.070 / 1.204 | 1.262 / 1.463 | **40.2 / 27.6** |
-*Sparse convolution fuses VoxelNeXt features.*
 
 ### Scheduling Studies (Single-Agent Policies, 50 m / 100 m)
 | Inference \\ Training | No Fusion | Closest Agent | Single Random | Multiple Random | Full Communication |
