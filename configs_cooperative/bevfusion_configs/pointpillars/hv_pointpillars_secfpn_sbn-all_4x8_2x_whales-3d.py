@@ -38,8 +38,8 @@ point_cloud_range = [-50, -50, -5, 50, 50, 3]
 class_names = [
     'Vehicle', 'Pedestrian', 'Cyclist'
 ]
-dataset_type = 'DolphinsDataset'
-data_root = 'data/dolphins-new/'
+dataset_type = 'WhalesDataset'
+data_root = 'data/whales/'
 
 input_modality = dict(
     use_lidar=True,
@@ -149,7 +149,7 @@ eval_pipeline = [
 
 data = dict(
     samples_per_gpu=4,
-    workers_per_gpu=4, #调试时用0
+    workers_per_gpu=4,
     train=dict(
         type=dataset_type,
         data_root=data_root,

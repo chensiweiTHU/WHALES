@@ -125,7 +125,7 @@ eval_pipeline = [
 # model settings
 data = dict(
     samples_per_gpu=3,
-    workers_per_gpu=3, #调试时用0
+    workers_per_gpu=3,
     train=dict(
         type=dataset_type,
         data_root=data_root,

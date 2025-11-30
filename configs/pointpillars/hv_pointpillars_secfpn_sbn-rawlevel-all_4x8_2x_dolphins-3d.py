@@ -8,8 +8,8 @@ _base_ = [
 class_names = [
     'Vehicle', 'Pedestrian', 'Cyclist'
 ]
-dataset_type = 'DolphinsDataset'
-data_root = 'data/dolphins-new/'
+dataset_type = 'WhalesDataset'
+data_root = 'data/whales/'
 # Input modality for Dolphins2 dataset, this is consistent with the submission
 # format which requires the information in input_modality.
 input_modality = dict(
@@ -159,7 +159,7 @@ eval_pipeline = [
 # model settings
 data = dict(
     samples_per_gpu=3,
-    workers_per_gpu=3, #调试时用0
+    workers_per_gpu=3,
     train=dict(
         type=dataset_type,
         data_root=data_root,

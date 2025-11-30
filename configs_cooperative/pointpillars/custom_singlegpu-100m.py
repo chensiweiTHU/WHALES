@@ -8,10 +8,8 @@ _base_ = [
 class_names = [
     'Vehicle', 'Pedestrian', 'Cyclist'
 ]
-dataset_type = 'DolphinsDataset'
+dataset_type = 'WhalesDataset'
 data_root = 'data/whales/'
-# Input modality for Dolphins2 dataset, this is consistent with the submission
-# format which requires the information in input_modality.
 input_modality = dict(
     use_lidar=True,
     use_camera=True,
@@ -169,7 +167,7 @@ eval_pipeline = [
 # model settings
 data = dict(
     samples_per_gpu=1,
-    workers_per_gpu=1, #调试时用0
+    workers_per_gpu=1,
     train=dict(
         type=dataset_type,
         data_root=data_root,

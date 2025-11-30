@@ -2,7 +2,7 @@ point_cloud_range = [-100, -100, -5, 100, 100, 3]
 voxel_size = [0.5, 0.5, 8]
 _base_ = [
     '../_base_/models/voxelnext_100m.py',
-    # '../_base_/datasets/dolphins-3d.py',
+    # '../_base_/datasets/whales-3d.py',
     '../_base_/schedules/schedule_2x.py',
     '../_base_/default_runtime.py',
 ]
@@ -11,10 +11,8 @@ plugin_dir = "mmdet3d_plugin/"
 class_names = [
     'Vehicle', 'Pedestrian', 'Cyclist'
 ]
-dataset_type = 'DolphinsDataset'
+dataset_type = 'WhalesDataset'
 data_root = 'data/whales/'
-# Input modality for Dolphins2 dataset, this is consistent with the submission
-# format which requires the information in input_modality.
 input_modality = dict(
     use_lidar=True,
     use_camera=True,
@@ -150,7 +148,7 @@ eval_pipeline = [
 # model settings
 data = dict(
     samples_per_gpu=4,
-    workers_per_gpu=4, #调试时用0
+    workers_per_gpu=4,
     train=dict(
         type=dataset_type,
         data_root=data_root,

@@ -4,8 +4,8 @@ _base_ = [
     '../_base_/schedules/schedule_2x.py',
     '../_base_/default_runtime.py',
 ]
-dataset_type = 'DolphinsDataset'
-data_root = 'data/dolphins-new/'
+dataset_type = 'WhalesDataset'
+data_root = 'data/whales/'
 input_modality = dict(
     use_lidar=True,
     use_camera=False,
@@ -117,7 +117,7 @@ eval_pipeline = [
 voxel_size = [0.5, 0.5, 8]
 data = dict(
     samples_per_gpu=2,
-    workers_per_gpu=2, #调试时用0
+    workers_per_gpu=2,
     train=dict(
         type=dataset_type,
         data_root=data_root,

@@ -35,8 +35,8 @@ model = dict(
     test_cfg=dict(
         pts=dict(voxel_size=voxel_size[:2], pc_range=point_cloud_range[:2])))
 
-dataset_type = 'DolphinsDataset'
-data_root = 'data/dolphins-new/'
+dataset_type = 'WhalesDataset'
+data_root = 'data/whales/'
 file_client_args = dict(backend='disk')
 
 # db_sampler = dict(
@@ -169,7 +169,7 @@ test_pipeline = [
 ]
 data = dict(
     samples_per_gpu=2,
-    workers_per_gpu=4, #调试时用0
+    workers_per_gpu=4,
     train=dict(
         type=dataset_type,
         data_root=data_root,

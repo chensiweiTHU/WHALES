@@ -1,6 +1,6 @@
 _base_ = [
         '../_base_/models/centerpoint_01voxel_second_secfpn_dolphins.py',
-        # '../_base_/datasets/dolphins-3d.py',
+        # '../_base_/datasets/whales-3d.py',
         '../_base_/schedules/schedule_2x.py',
         '../_base_/default_runtime.py',
           ]
@@ -34,8 +34,8 @@ model = dict(
     test_cfg=dict(
         pts=dict(voxel_size=voxel_size[:2], pc_range=point_cloud_range[:2])))
 
-dataset_type = 'DolphinsDataset'
-data_root = 'data/dolphins-new/'
+dataset_type = 'WhalesDataset'
+data_root = 'data/whales/'
 file_client_args = dict(backend='disk')
 
 db_sampler = dict(
@@ -129,7 +129,7 @@ test_pipeline = [
 ]
 data = dict(
     samples_per_gpu=4,
-    workers_per_gpu=4, #调试时用0
+    workers_per_gpu=4,
     train=dict(
         type=dataset_type,
         data_root=data_root,

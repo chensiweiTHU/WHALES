@@ -1,12 +1,11 @@
-point_cloud_range = [-100, -100, -5, 100, 100, 3]
-_base_ = [
-    '../../_base_/models/voxelnext_100m.py',
-    # '../../_base_/datasets/dolphins-3d.py',
-    '../../_base_/schedules/schedule_2x.py',
-    '../../_base_/default_runtime.py',
-]
-plugin = True
-plugin_dir = "mmdet3d_plugin/"
+# If point cloud range is changed, the models should also change their point
+# cloud range accordingly
+point_cloud_range = [-50, -50, -5, 50, 50, 3]
+# For nuScenes we usually do 10-class detection
+# class_names = [
+#     'car', 'truck', 'trailer', 'bus', 'construction_vehicle', 'bicycle',
+#     'motorcycle', 'pedestrian', 'traffic_cone', 'barrier'
+# ]
 class_names = [
     'Vehicle', 'Pedestrian', 'Cyclist'
 ]
@@ -14,12 +13,20 @@ dataset_type = 'WhalesDataset'
 data_root = 'data/whales/'
 input_modality = dict(
     use_lidar=True,
-    use_camera=True,
+    use_camera=False,
     use_radar=False,
     use_map=False,
     use_external=False)
 file_client_args = dict(backend='disk')
-
+# Uncomment the following if use ceph or other file clients.
+# See https://mmcv.readthedocs.io/en/latest/api.html#mmcv.fileio.FileClient
+# for more details.
+# file_client_args = dict(
+#     backend='petrel',
+#     path_mapping=dict({
+#         './data/nuscenes/': 's3://nuscenes/nuscenes/',
+#         'data/nuscenes/': 's3://nuscenes/nuscenes/'
+#     }))
 train_pipeline = [
     dict(
         type='LoadPointsFromFile',
@@ -27,6 +34,10 @@ train_pipeline = [
         load_dim=4,
         use_dim=4,
         file_client_args=file_client_args),
+    # dict(
+    #     type='LoadPointsFromMultiSweeps',
+    #     sweeps_num=10,
+    #     file_client_args=file_client_args),
     dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
     dict(
         type='GlobalRotScaleTrans',
@@ -48,19 +59,10 @@ test_pipeline = [
         load_dim=4,
         use_dim=4,
         file_client_args=file_client_args),
-    dict(type='AgentScheduling',
-        mode="unicast",
-        submode="multi-mass", 
-        basic_data_limit=6e6,
-        agent_number_limit=3,
-        ),
-    dict(
-        type='LoadPointsFromCooperativeAgents',
-        coord_type='LIDAR',
-        load_dim=4, use_dim=4,
-        file_client_args=file_client_args
-        ),
-    dict(type='RawlevelPointCloudFusion'),
+    # dict(
+    #     type='LoadPointsFromMultiSweeps',
+    #     sweeps_num=10,
+    #     file_client_args=file_client_args),
     dict(
         type='MultiScaleFlipAug3D',
         img_scale=(1333, 800),
@@ -79,16 +81,7 @@ test_pipeline = [
                 type='DefaultFormatBundle3D',
                 class_names=class_names,
                 with_label=False),
-    dict(type='Collect3D', keys=['points'], meta_keys=['filename', 'ori_shape', 'img_shape', 'lidar2img',
-        'depth2img', 'cam2img', 'pad_shape',
-        'scale_factor', 'flip', 'pcd_horizontal_flip',
-        'pcd_vertical_flip', 'box_mode_3d', 'box_type_3d',
-        'img_norm_cfg', 'pcd_trans', 'sample_idx',
-        'pcd_scale_factor', 'pcd_rotation', 'pts_filename',
-        'transformation_3d_flow',
-        # new keys
-        'transmitted_data_size'
-        ])
+            dict(type='Collect3D', keys=['points'])
         ])
 ]
 # construct a pipeline for data and gt loading in show function
@@ -100,20 +93,6 @@ eval_pipeline = [
         load_dim=4,
         use_dim=4,
         file_client_args=file_client_args),
-    dict(type='AgentScheduling',
-        mode="unicast",
-        submode="multi-mass", 
-        basic_data_limit=6e6,
-        agent_number_limit=3,
-        ),
-    dict(
-        type='LoadPointsFromCooperativeAgents',
-        coord_type='LIDAR',
-        load_dim=4, use_dim=4,
-        file_client_args=file_client_args
-        ),
-    dict(type='RawlevelPointCloudFusion'),
-    dict(type='LoadAnnotations3D'),
     # dict(
     #     type='LoadPointsFromMultiSweeps',
     #     sweeps_num=10,
@@ -122,21 +101,12 @@ eval_pipeline = [
         type='DefaultFormatBundle3D',
         class_names=class_names,
         with_label=False),
-    dict(type='Collect3D', keys=['points'], meta_keys=['filename', 'ori_shape', 'img_shape', 'lidar2img',
-        'depth2img', 'cam2img', 'pad_shape',
-        'scale_factor', 'flip', 'pcd_horizontal_flip',
-        'pcd_vertical_flip', 'box_mode_3d', 'box_type_3d',
-        'img_norm_cfg', 'pcd_trans', 'sample_idx',
-        'pcd_scale_factor', 'pcd_rotation', 'pts_filename',
-        'transformation_3d_flow',
-        # new keys
-        'transmitted_data_size'
-        ])
+    dict(type='Collect3D', keys=['points'])
 ]
-# model settings
+
 data = dict(
-    samples_per_gpu=0,
-    workers_per_gpu=0,
+    samples_per_gpu=4,
+    workers_per_gpu=4,
     train=dict(
         type=dataset_type,
         data_root=data_root,
@@ -147,12 +117,7 @@ data = dict(
         test_mode=False,
         # we use box_type_3d='LiDAR' in kitti and nuscenes dataset
         # and box_type_3d='Depth' in sunrgbd and scannet dataset.
-        box_type_3d='LiDAR',
-        class_range={
-                "Vehicle": 100,
-                "Pedestrian": 80,
-                "Cyclist": 80,
-                }),
+        box_type_3d='LiDAR'),
     val=dict(
         type=dataset_type,
         data_root=data_root,
@@ -161,12 +126,7 @@ data = dict(
         classes=class_names,
         modality=input_modality,
         test_mode=True,
-        box_type_3d='LiDAR',
-        class_range={
-                "Vehicle": 100,
-                "Pedestrian": 80,
-                "Cyclist": 80,
-                }),
+        box_type_3d='LiDAR'),
     test=dict(
         type=dataset_type,
         data_root=data_root,
@@ -175,9 +135,9 @@ data = dict(
         classes=class_names,
         modality=input_modality,
         test_mode=True,
-        box_type_3d='LiDAR',
-        class_range={
-                "Vehicle": 100,
-                "Pedestrian": 80,
-                "Cyclist": 80,
-                }))
+        box_type_3d='LiDAR'))
+# For nuScenes dataset, we usually evaluate the model at the end of training.
+# Since the models are trained by 24 epochs by default, we set evaluation
+# interval to be 24. Please change the interval accordingly if you do not
+# use a default schedule.
+# evaluation = dict(interval=6, pipeline=eval_pipeline)

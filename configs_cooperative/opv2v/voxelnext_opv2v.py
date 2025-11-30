@@ -3,7 +3,7 @@ plugin = True
 plugin_dir = "mmdet3d_plugin/"
 _base_ = [
     # '../_base_/models/hv_pointpillars_fpn_dolphins.py',
-    # '../_base_/datasets/dolphins-3d.py',
+    # '../_base_/datasets/whales-3d.py',
     '../_base_/datasets/opv2v.py',
     #'../_base_/schedules/schedule_2x.py',
     '../_base_/default_runtime.py',

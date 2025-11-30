@@ -54,10 +54,8 @@ point_cloud_range = [-50, -50, -5, 50, 50, 3]
 class_names = [
     'Vehicle', 'Pedestrian', 'Cyclist'
 ]
-dataset_type = 'DolphinsDataset'
+dataset_type = 'WhalesDataset'
 data_root = 'data/whales/'
-# Input modality for Dolphins2 dataset, this is consistent with the submission
-# format which requires the information in input_modality.
 input_modality = dict(
     use_lidar=True,
     use_camera=False,
@@ -167,7 +165,7 @@ eval_pipeline = [
 
 data = dict(
     samples_per_gpu=4,
-    workers_per_gpu=4, #调试时用0
+    workers_per_gpu=4,
     train=dict(
         type=dataset_type,
         data_root=data_root,
