@@ -55,8 +55,18 @@ WHALES (**W**ireless en**H**anced **A**utonomous vehicles with **L**arge number 
    ```bash
    git clone https://github.com/chensiweiTHU/WHALES.git
    ```
-2. Install `mmdetection3d==0.17.1` following the [official guide](https://github.com/open-mmlab/mmdetection3d).
-3. *(Optional)* Install [OpenCOOD](https://github.com/DerrickXuNu/OpenCOOD) for additional cooperative baselines.
+2. Create and activate a Conda environment:
+   ```bash
+   conda create -n whales python=3.10 -y
+   conda activate whales
+   ```
+3. Install WHALES:
+   ```bash
+   pip install -e .
+   ```
+4. Install `mmdetection3d==0.17.1` following the [official guide](https://github.com/open-mmlab/mmdetection3d).
+5. *(Optional)* Install [OpenCOOD](https://github.com/DerrickXuNu/OpenCOOD) for additional cooperative baselines.
+
 
 ### Data Preparation
 1. **Download** the full dataset from Google Drive: [Download Whales](https://drive.google.com/file/d/1XPbTyNLznpltdkzz-yKPKRIq1hASDN7X/view).
@@ -72,11 +82,11 @@ Use configs in `./configs_cooperative/`.
 
 - **Training**
   ```bash
-  bash tools/dist_train.sh your_config_file.py number_of_gpus
+  bash tools/dist_train.sh <config>.py <gpu_num>
   ```
 - **Testing**
   ```bash
-  bash tools/dist_test.sh your_config_file.py your_model_file.pth number_of_gpus --eval bbox
+  bash tools/dist_test.sh <config>.py <model>.pth <gpu_num> --eval bbox
   ```
 Metrics: mAP and NDS.
 
