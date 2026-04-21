@@ -1,4 +1,5 @@
 # Copyright (c) OpenMMLab. All rights reserved.
+import math
 import mmcv
 import numpy as np
 import os
@@ -13,9 +14,27 @@ from typing import List, Tuple, Union
 from mmdet3d.core.bbox.box_np_ops import points_cam2img
 from mmdet3d_plugin.datasets.whales_dataset import WhalesDataset
 
-from data_converter.whales import Whales
+from tools.data_converter.whales import Whales
 
 whales_categories = ('Vehicle', 'Pedestrian', 'Cyclist')
+
+_LIDAR_HEIGHT_VEH = 1.8
+_LIDAR_HEIGHT_RSU = 0.0
+
+# All four cameras are co-located with the LiDAR; yaws taken from the
+# CARLA spawn code (spawn_agents.py): front=0, left=-90, right=+90, back=180.
+_VEH_CAMERA_POSES = {
+    'camera':   (0.0, 0.0, _LIDAR_HEIGHT_VEH,   0.0),
+    'camera_l': (0.0, 0.0, _LIDAR_HEIGHT_VEH, -90.0),
+    'camera_r': (0.0, 0.0, _LIDAR_HEIGHT_VEH, +90.0),
+    'camera_b': (0.0, 0.0, _LIDAR_HEIGHT_VEH, 180.0),
+}
+_RSU_CAMERA_POSES = {
+    'camera':   (0.0, 0.0, _LIDAR_HEIGHT_RSU,   0.0),
+    'camera_l': (0.0, 0.0, _LIDAR_HEIGHT_RSU, -90.0),
+    'camera_r': (0.0, 0.0, _LIDAR_HEIGHT_RSU, +90.0),
+    'camera_b': (0.0, 0.0, _LIDAR_HEIGHT_RSU, 180.0),
+}
 
 def create_whales_infos(root_path,
                           info_prefix,
@@ -45,27 +64,21 @@ def create_whales_infos(root_path,
     train_scenes = all_samples[:num_train]
     val_scenes = all_samples[num_train:]
 
-    # filter existing scenes.
     for scene in mmcv.track_iter_progress(whale.scenes):
-        # print(scene)
         tot_vehicle_num = whale.scenen[scene]['vehicle_num']
-        
         save_interval = int(whale.config[scene]["world"]['save_interval'])
-        
-        steps = 0
+
         scene_files = os.listdir(osp.join(root_path, scene))
         scene_frames = [file for file in scene_files if file.isdigit()]
-
         steps = len(scene_frames)
-        # print(steps)
-        # iterate through all vehicles
-        vehicle_indices = [i for i in range(0, tot_vehicle_num+1)]
+        # Agent indices 0..N-1 are vehicles; index N is the RSU.
+        vehicle_indices = list(range(0, tot_vehicle_num + 1))
 
         for i in range(steps):
             for index in vehicle_indices:
                 train_infos, val_infos = _fill_trainval_infos(
-                    whale, train_scenes, val_scenes, root_path, scene, index, save_interval, i+1, max_sweeps=max_sweeps)
-
+                    whale, train_scenes, val_scenes, root_path, scene,
+                    index, save_interval, i + 1, max_sweeps=max_sweeps)
                 all_train_infos.extend(train_infos)
                 all_val_infos.extend(val_infos)
 
@@ -85,7 +98,18 @@ def create_whales_infos(root_path,
     mmcv.dump(data, val_info_path)
 
 
-def _fill_trainval_infos(whales:Whales, 
+def _yaw_deg_to_quaternion(yaw_deg: float) -> np.ndarray:
+    """Yaw-only quaternion (w, x, y, z) for a rotation about +Z."""
+    yaw_rad = math.radians(float(yaw_deg))
+    return np.array([
+        math.cos(yaw_rad / 2.0),
+        0.0,
+        0.0,
+        math.sin(yaw_rad / 2.0),
+    ], dtype=np.float64)
+
+
+def _fill_trainval_infos(whales:Whales,
                          train_scenes,
                          val_scenes,
                          root_path: str, 
@@ -110,37 +134,42 @@ def _fill_trainval_infos(whales:Whales,
     """
     train_infos = []
     val_infos = []
-
-    # step = 1
     time_interval = 0.1 * save_interval
 
-    # for sample in mmcv.track_iter_progress(whales.frames):
-    boxes, cam_intrinsic, annotations, vehicle_locations, vehicle_rotations = whales.get_sample_data(\
-        step, sample, vehicle_index, save_interval, use_flat_vehicle_coordinates=True)
-    if vehicle_index< whales.scenen[sample]['vehicle_num']-1:
-        lidar_path = osp.join(root_path, sample, str(step * save_interval), 'vehicle' + str(vehicle_index), 'point_cloud.bin')
-    else:
-        lidar_path = osp.join(root_path, sample, str(step * save_interval),'rsu', 'point_cloud.bin')
+    boxes, cam_intrinsic, annotations, vehicle_locations, vehicle_rotations = \
+        whales.get_sample_data(step, sample, vehicle_index, save_interval,
+                               use_flat_vehicle_coordinates=True)
+    vehicle_num = whales.scenen[sample]['vehicle_num']
+    is_rsu = vehicle_index >= vehicle_num
+    veh_or_rsu = 'rsu' if is_rsu else 'vehicle'
+    agent_str = 'rsu' if is_rsu else f'vehicle{vehicle_index}'
+
+    lidar_path = osp.join(
+        root_path, sample, str(step * save_interval), agent_str,
+        'point_cloud.bin')
     mmcv.check_file_exist(lidar_path)
+
     token = f'{sample}_{step*save_interval}_{vehicle_index}'
     timestamp = step * time_interval
-    sample_data = whales.sample[whales._token2ind['sample'][token]] 
-    rotation = sample_data['sample_annotation'][vehicle_index]['rotation']
-    veh_or_rsu = 'vehicle' if vehicle_index < whales.scenen[sample]['vehicle_num'] else 'rsu'
+    sample_data = whales.sample[whales._token2ind['sample'][token]]
+
+    agent_yaw_deg = vehicle_rotations[vehicle_index][1]
+    ego2global_rotation = _yaw_deg_to_quaternion(agent_yaw_deg)
+    lidar_height = _LIDAR_HEIGHT_RSU if is_rsu else _LIDAR_HEIGHT_VEH
 
     info = {
         'lidar_path': lidar_path,
-        'num_features': 5,
+        'num_features': 4,
         "token": token,
         'sweeps': [],
         'cams': dict(),
-        'lidar2ego_translation': np.zeros(3),
+        'lidar2ego_translation': np.array([0.0, 0.0, lidar_height]),
         'lidar2ego_rotation': np.array([1, 0, 0, 0]),
         'ego2global_translation': vehicle_locations[vehicle_index],
-        'ego2global_rotation': rotation,
+        'ego2global_rotation': ego2global_rotation,
         'timestamp': timestamp,
         'sample_info': sample_data,
-        "veh_or_rsu": veh_or_rsu
+        'veh_or_rsu': veh_or_rsu,
     }
 
     l2e_r = info['lidar2ego_rotation']
@@ -157,75 +186,119 @@ def _fill_trainval_infos(whales:Whales,
         'camera_l',
         'camera_r'
     ]
-    agent_str = 'vehicle' + str(vehicle_index) if veh_or_rsu == 'vehicle' else 'rsu'
+    cam_pose_table = _RSU_CAMERA_POSES if is_rsu else _VEH_CAMERA_POSES
     for cam in camera_types:
-        cam_path = osp.join(root_path, sample, str(step * save_interval), agent_str, cam + '.png' )
-        cam_info = obtain_sensor2top(whales, vehicle_locations, cam_path, l2e_t, l2e_r_mat, e2g_t, e2g_r_mat, timestamp, vehicle_index, cam)
+        cam_path = osp.join(
+            root_path, sample, str(step * save_interval), agent_str,
+            cam + '.png')
+        cam_info = obtain_sensor2top(
+            whales,
+            vehicle_locations,
+            vehicle_rotations,
+            cam_path,
+            l2e_t, l2e_r_mat,
+            e2g_t, e2g_r_mat,
+            timestamp,
+            vehicle_index,
+            sensor_type=cam,
+            is_rsu=is_rsu,
+            cam_pose=cam_pose_table[cam],
+        )
         cam_info.update(cam_intrinsic=cam_intrinsic)
         info['cams'].update({cam: cam_info})
 
-    # obtain sweeps for a single key-frame
     sweeps = []
     prev_step = step - 1
-    # print("prev_step", prev_step)
     while len(sweeps) < max_sweeps:
         if prev_step == 0:
             break
-        lidar_prev_path = osp.join(root_path, sample, str(prev_step * save_interval), 'vehicle' + str(vehicle_index), 'point_cloud.bin')
-        prev_veh_locations = whales.frames[sample][f'{sample}_{prev_step*save_interval}']['veh_locations']
-        sweep = obtain_sensor2top(whales, prev_veh_locations, lidar_prev_path, l2e_t,
-                                    l2e_r_mat, e2g_t, e2g_r_mat, timestamp, vehicle_index, 'lidar')
+        prev_frame_key = f'{sample}_{prev_step*save_interval}'
+        if prev_frame_key not in whales.frames[sample]:
+            prev_step -= 1
+            continue
+        lidar_prev_path = osp.join(
+            root_path, sample, str(prev_step * save_interval), agent_str,
+            'point_cloud.bin')
+        if not osp.exists(lidar_prev_path):
+            prev_step -= 1
+            continue
+        prev_frame = whales.frames[sample][prev_frame_key]
+        prev_veh_locations = prev_frame['veh_locations']
+        prev_veh_rotations = prev_frame['veh_rotations']
+        sweep = obtain_sensor2top(
+            whales,
+            prev_veh_locations,
+            prev_veh_rotations,
+            lidar_prev_path,
+            l2e_t, l2e_r_mat,
+            e2g_t, e2g_r_mat,
+            timestamp,
+            vehicle_index,
+            sensor_type='lidar',
+            is_rsu=is_rsu,
+            cam_pose=None,
+        )
         sweeps.append(sweep)
         prev_step -= 1
     info['sweeps'] = sweeps
 
-    # annotations = sample['sample_annotation']
+    if not is_rsu and vehicle_index < len(annotations):
+        keep_mask = np.ones(len(annotations), dtype=bool)
+        keep_mask[vehicle_index] = False
+        boxes = [b for b, k in zip(boxes, keep_mask) if k]
+        annotations = [a for a, k in zip(annotations, keep_mask) if k]
+
+    if len(boxes) == 0:
+        info['gt_boxes'] = np.zeros((0, 7), dtype=np.float32)
+        info['gt_names'] = np.array([], dtype=object)
+        info['gt_velocity'] = np.zeros((0, 2), dtype=np.float32)
+        info['valid_flag'] = np.zeros((0,), dtype=bool)
+        if sample in train_scenes:
+            train_infos.append(info)
+        else:
+            val_infos.append(info)
+        return train_infos, val_infos
+
     locs = np.array([b.center for b in boxes]).reshape(-1, 3)
     dims = np.array([b.wlh for b in boxes]).reshape(-1, 3)
-    rots = np.array([b.orientation.yaw_pitch_roll[0] for b in boxes]).reshape(-1, 1)
+    rots = -np.array(
+        [b.orientation.yaw_pitch_roll[0] for b in boxes]).reshape(-1, 1)
     velocity = np.array(
-            [whales.box_velocity(sample, save_interval, step, anno, time_interval)[:2] for anno in annotations]) 
-    
+            [whales.box_velocity(sample, save_interval, step, anno, time_interval)[:2] for anno in annotations])
+
     for i in range(len(annotations)):
         v = whales.box_velocity(sample, save_interval, step, annotations[i], time_interval)
         annotations[i]['velocity'] = v
-    
-    valid_flag = np.array(
-        [True for anno in annotations],
-            dtype=bool).reshape(-1)
-    # convert velo from global to lidar
+
+    valid_flag = np.array([True] * len(annotations), dtype=bool).reshape(-1)
+    # Rotate velocities from global -> LiDAR frame.
     for i in range(len(annotations)):
         velo = np.array([*velocity[i], 0.0])
-        velo = velo @ np.linalg.inv(e2g_r_mat).T @ np.linalg.inv(
-            l2e_r_mat).T
+        velo = velo @ np.linalg.inv(e2g_r_mat).T @ np.linalg.inv(l2e_r_mat).T
         velocity[i] = velo[:2]
-        # print(velocity[i])
-    
-    names = [anno['type'] for anno in annotations]
-    names = np.array(names)
-    # we need to convert box size to
-    # the format of our lidar coordinate system
-    # which is x_size, y_size, z_size (corresponding to l, w, h)
+
+    names = np.array([anno['type'] for anno in annotations])
+    # NuScenesBox.wlh is (W, L, H); reorder to (L, W, H) for the mmdet3d
+    # LiDAR box convention.
     gt_boxes = np.concatenate([locs, dims[:, [1, 0, 2]], rots], axis=1)
-    assert len(gt_boxes) == len(
-        annotations), f'{len(gt_boxes)}, {len(annotations)}'
+    assert len(gt_boxes) == len(annotations), \
+        f'{len(gt_boxes)}, {len(annotations)}'
     info['gt_boxes'] = gt_boxes
     info['gt_names'] = names
     info['gt_velocity'] = velocity.reshape(-1, 2)
-
     info['valid_flag'] = valid_flag
 
     if sample in train_scenes:
         train_infos.append(info)
     else:
         val_infos.append(info)
-        # step += 1
 
     return train_infos, val_infos
 
 
 def obtain_sensor2top(whales,
                       vehicle_locations,
+                      vehicle_rotations,
                       data_path,
                       l2e_t,
                       l2e_r_mat,
@@ -233,41 +306,51 @@ def obtain_sensor2top(whales,
                       e2g_r_mat,
                       timestamp,
                       index,
-                      sensor_type='lidar'):
-    """Obtain the info with RT matric from general sensor to Top LiDAR.
+                      sensor_type='lidar',
+                      is_rsu=False,
+                      cam_pose=None):
+    """Build a sweep-style info dict with sensor->top-LiDAR transforms.
 
     Args:
-        whales (class): Dataset class in the whales dataset.
-        sensor_token (str): Sample data token corresponding to the
-            specific sensor type.
-        l2e_t (np.ndarray): Translation from lidar to ego in shape (1, 3).
-        l2e_r_mat (np.ndarray): Rotation matrix from lidar to ego
-            in shape (3, 3).
-        e2g_t (np.ndarray): Translation from ego to global in shape (1, 3).
-        e2g_r_mat (np.ndarray): Rotation matrix from ego to global
-            in shape (3, 3).
-        sensor_type (str, optional): Sensor to calibrate. Default: 'lidar'.
+        vehicle_locations (list): per-agent (x, y, z) in CARLA world.
+        vehicle_rotations (list): per-agent (pitch, yaw, roll) in degrees.
+        data_path (str): sensor file path to store in the info.
+        l2e_t, l2e_r_mat, e2g_t, e2g_r_mat: the key-frame's lidar->ego and
+            ego->global transforms (the ego frame is the agent body).
+        index (int): agent index into vehicle_locations / vehicle_rotations.
+        sensor_type (str): e.g. 'camera', 'camera_l', 'lidar'.
+        is_rsu (bool): True if this agent is the RSU (zero lidar height).
+        cam_pose (tuple | None): (x, y, z, yaw_deg) of a camera in the agent
+            body frame, or None when the sensor is the LiDAR itself.
 
     Returns:
-        sweep (dict): Sweep information after transformation.
+        dict: Sweep info with sensor2lidar_{rotation,translation}.
     """
+    if cam_pose is None:
+        sensor_ego_rotation = np.array([1, 0, 0, 0], dtype=np.float64)
+        sensor_ego_translation = np.array(
+            [0.0, 0.0, _LIDAR_HEIGHT_RSU if is_rsu else _LIDAR_HEIGHT_VEH],
+            dtype=np.float64)
+    else:
+        cam_x, cam_y, cam_z, cam_yaw = cam_pose
+        sensor_ego_rotation = _yaw_deg_to_quaternion(cam_yaw)
+        sensor_ego_translation = np.array(
+            [cam_x, cam_y, cam_z], dtype=np.float64)
 
+    agent_yaw_deg = vehicle_rotations[index][1]
     sweep = {
         'data_path': data_path,
         'type': sensor_type,
-        'sensor2ego_translation': np.zeros(3),
-        'sensor2ego_rotation': np.array([0, 0, 0, 1]),
+        'sensor2ego_translation': sensor_ego_translation,
+        'sensor2ego_rotation': sensor_ego_rotation,
         'ego2global_translation': vehicle_locations[index],
-        'ego2global_rotation': whales.euler_to_quaternion(vehicle_locations[index]),
+        'ego2global_rotation': _yaw_deg_to_quaternion(agent_yaw_deg),
         'timestamp': timestamp,
     }
     l2e_r_s = sweep['sensor2ego_rotation']
     l2e_t_s = sweep['sensor2ego_translation']
     e2g_r_s = sweep['ego2global_rotation']
     e2g_t_s = sweep['ego2global_translation']
-
-    # obtain the RT from sensor to Top LiDAR
-    # sweep->ego->global->ego'->lidar
 
     l2e_r_s_mat = Quaternion(l2e_r_s).rotation_matrix
     e2g_r_s_mat = Quaternion(e2g_r_s).rotation_matrix
@@ -277,82 +360,84 @@ def obtain_sensor2top(whales,
         np.linalg.inv(e2g_r_mat).T @ np.linalg.inv(l2e_r_mat).T)
     T -= e2g_t @ (np.linalg.inv(e2g_r_mat).T @ np.linalg.inv(l2e_r_mat).T
                   ) + l2e_t @ np.linalg.inv(l2e_r_mat).T
-    sweep['sensor2lidar_rotation'] = R.T  # points @ R.T + T
+    sweep['sensor2lidar_rotation'] = R.T
     sweep['sensor2lidar_translation'] = T
     return sweep
 
 
 def export_2d_annotation(root_path, info_path, version, mono3d=True):
-    """Export 2d annotation from the info file and raw data.
+    """Export a mono3D COCO-style JSON from a WHALES info PKL.
 
     Args:
-        root_path (str): Root path of the raw data.
-        info_path (str): Path of the info file.
-        version (str): Dataset version.
-        mono3d (bool): Whether to export mono3d annotation. Default: True.
+        root_path (str): dataset root (used to store relative image paths).
+        info_path (str): path to the whales_infos_*.pkl to read.
+        version (str): dataset version string (carried through metadata).
+        mono3d (bool): whether to also emit camera-frame 3D annotations.
     """
-    index = 0
-    
-    # get bbox annotations for camera
-    camera_types = [
-        'camera',
-        'camera_b',
-        'camera_l',
-        'camera_r'
-    ]
+    camera_types = ['camera', 'camera_b', 'camera_l', 'camera_r']
 
     whales_infos = mmcv.load(info_path)['infos']
-    whales = Whales(version=version, dataroot=root_path, verbose=True)
-    # save_interval = int(whales.config[scene]["world"]['save_interval'])
-    save_interval = 5
-    # info_2d_list = []
     cat2Ids = [
         dict(id=whales_categories.index(cat_name), name=cat_name)
         for cat_name in whales_categories
     ]
     coco_ann_id = 0
+    img_id_counter = 0
     coco_2d_dict = dict(annotations=[], images=[], categories=cat2Ids)
+
     for info in mmcv.track_iter_progress(whales_infos):
-        # print(info)
-        step = int(int(info['token'].split('_')[1])/save_interval)
-        sample = info['lidar_path'].split('/')[3]
-        # print("cur step:", step)
+        token = info['token']   # scene_frame_agent
+        gt_boxes = info['gt_boxes']          # (N, 7) in lidar frame
+        gt_names = info['gt_names']
+        gt_velocity = info.get('gt_velocity', np.zeros((len(gt_boxes), 2)))
+
         for cam in camera_types:
             cam_info = info['cams'][cam]
-            # print(cam_info)
             cam_path = cam_info['data_path']
-            # print(cam_path)
-            coco_infos = get_2d_boxes(
-                whales,
-                sample,
-                step,
-                index,
-                save_interval,
-                cam_path,
-                visibilities=['', '1', '2', '3', '4'],
-                mono3d=mono3d)
-            (height, width, _) = mmcv.imread(cam_info['data_path']).shape
+            try:
+                (height, width, _) = mmcv.imread(cam_path).shape
+            except Exception:
+                height, width = 1080, 1920
+
+            image_id = f'{token}_{cam}'
+            rel_path = osp.relpath(cam_path, root_path)
             coco_2d_dict['images'].append(
                 dict(
-                    file_name=cam_info['data_path'].split('data/whales/')
-                    [-1],
-                    id=cam_info['type'],
-                    token=info['token'],
-                    cam2ego_rotation=cam_info['sensor2ego_rotation'],
-                    cam2ego_translation=cam_info['sensor2ego_translation'],
-                    ego2global_rotation=info['ego2global_rotation'],
-                    ego2global_translation=info['ego2global_translation'],
-                    cam_intrinsic=cam_info['cam_intrinsic'],
+                    file_name=rel_path,
+                    id=image_id,
+                    token=token,
+                    cam_type=cam,
+                    cam2ego_rotation=np.asarray(
+                        cam_info['sensor2ego_rotation']).tolist(),
+                    cam2ego_translation=np.asarray(
+                        cam_info['sensor2ego_translation']).tolist(),
+                    ego2global_rotation=np.asarray(
+                        info['ego2global_rotation']).tolist(),
+                    ego2global_translation=np.asarray(
+                        info['ego2global_translation']).tolist(),
+                    cam_intrinsic=np.asarray(
+                        cam_info['cam_intrinsic']).tolist(),
                     width=width,
-                    height=height))
+                    height=height,
+                ))
+            img_id_counter += 1
+
+            coco_infos = get_2d_boxes(
+                gt_boxes=gt_boxes,
+                gt_names=gt_names,
+                gt_velocity=gt_velocity,
+                cam_info=cam_info,
+                image_id=image_id,
+                file_name=rel_path,
+                img_hw=(height, width),
+                mono3d=mono3d,
+            )
             for coco_info in coco_infos:
-                if coco_info is None:
-                    continue
-                # add an empty key for coco format
                 coco_info['segmentation'] = []
                 coco_info['id'] = coco_ann_id
                 coco_2d_dict['annotations'].append(coco_info)
                 coco_ann_id += 1
+
     if mono3d:
         json_prefix = f'{info_path[:-4]}_mono3d'
     else:
@@ -360,135 +445,141 @@ def export_2d_annotation(root_path, info_path, version, mono3d=True):
     mmcv.dump(coco_2d_dict, f'{json_prefix}.coco.json')
 
 
-def get_2d_boxes(whales,
-                 sample: str,
-                 step: int,
-                 index: int,
-                 save_interval: int,
-                 cam_path: str,
-                 visibilities: List[str],
-                 mono3d=True):
-    """Get the 2D annotation records for a given `sample_data_token`.
+_CARLA_CAM_TO_OPENCV = np.array([
+    [0.0,  1.0,  0.0],
+    [0.0,  0.0, -1.0],
+    [1.0,  0.0,  0.0],
+], dtype=np.float64)
+
+
+def _lidar_box_corners(gt_boxes: np.ndarray) -> np.ndarray:
+    """Return the 8 corner xyz positions for each (N, 7) LiDAR-frame box."""
+    N = gt_boxes.shape[0]
+    if N == 0:
+        return np.zeros((0, 8, 3), dtype=np.float32)
+    cx, cy, cz = gt_boxes[:, 0], gt_boxes[:, 1], gt_boxes[:, 2]
+    L, W, H = gt_boxes[:, 3], gt_boxes[:, 4], gt_boxes[:, 5]
+    yaw = gt_boxes[:, 6]
+    off = np.array([[+1, +1, -1], [+1, -1, -1], [-1, -1, -1], [-1, +1, -1],
+                    [+1, +1, +1], [+1, -1, +1], [-1, -1, +1], [-1, +1, +1]],
+                   dtype=np.float32) * 0.5
+    half = np.stack([L, W, H], axis=1)[:, None, :]
+    local = off[None, :, :] * half
+    c, s = np.cos(yaw), np.sin(yaw)
+    R = np.stack([
+        np.stack([c, -s, np.zeros_like(c)], axis=1),
+        np.stack([s,  c, np.zeros_like(c)], axis=1),
+        np.stack([np.zeros_like(c), np.zeros_like(c), np.ones_like(c)], axis=1),
+    ], axis=1)
+    rotated = np.einsum('nij,nkj->nki', R, local)
+    centre = np.stack([cx, cy, cz], axis=1)[:, None, :]
+    return rotated + centre
+
+
+def _lidar_to_camera_opencv(points_lidar: np.ndarray,
+                            cam_info: dict) -> np.ndarray:
+    """Transform Nx3 LiDAR-frame (y=left) points into the OpenCV camera frame."""
+    p_carla = np.asarray(points_lidar, dtype=np.float64).copy()
+    p_carla[..., 1] = -p_carla[..., 1]
+    R_s2l = np.asarray(cam_info['sensor2lidar_rotation'], dtype=np.float64)
+    t_s2l = np.asarray(cam_info['sensor2lidar_translation'], dtype=np.float64)
+    p_cam_carla = (p_carla - t_s2l) @ R_s2l
+    return p_cam_carla @ _CARLA_CAM_TO_OPENCV.T
+
+
+def get_2d_boxes(gt_boxes: np.ndarray,
+                 gt_names: np.ndarray,
+                 gt_velocity: np.ndarray,
+                 cam_info: dict,
+                 image_id: str,
+                 file_name: str,
+                 img_hw: Tuple[int, int],
+                 mono3d: bool = True) -> List[dict]:
+    """Project LiDAR-frame GT boxes into one camera and build COCO records.
 
     Args:
-        sample_data_token (str): Sample data token belonging to a camera \
-            keyframe.
-        visibilities (list[str]): Visibility filter.
-        mono3d (bool): Whether to get boxes with mono3d annotation.
-
-    Return:
-        list[dict]: List of 2D annotation record that belongs to the input
-            `sample_data_token`.
+        gt_boxes (np.ndarray): (N, 7) in the WHALES LiDAR frame.
+        gt_names (np.ndarray): (N,) class names aligned with gt_boxes.
+        gt_velocity (np.ndarray): (N, 2) LiDAR-frame xy velocity or None.
+        cam_info (dict): one entry from info['cams'][cam_type].
+        image_id (str): unique COCO image identifier.
+        file_name (str): image path stored on the annotation.
+        img_hw (tuple): (height, width) of the rendered image.
+        mono3d (bool): if True, add camera-frame 3D fields per annotation.
     """
+    H, W = img_hw
+    K = np.asarray(cam_info['cam_intrinsic'])
+    recs: List[dict] = []
+    if gt_boxes.shape[0] == 0:
+        return recs
 
-    # Get the sample data and the sample corresponding to that sample data.
-    # frame = whales.frames
-    # all_samples = list(whales.frames.keys())
+    # Camera yaw in the agent body frame, recovered from sensor2lidar (the
+    # LiDAR has zero yaw, so this is the camera's yaw relative to LiDAR).
+    R_s2l = np.asarray(cam_info['sensor2lidar_rotation'], dtype=np.float64)
+    cam_yaw_rad = math.atan2(R_s2l[1, 0], R_s2l[0, 0])
 
-    
+    corners_lidar = _lidar_box_corners(gt_boxes)
+    N = corners_lidar.shape[0]
+    corners_cam = _lidar_to_camera_opencv(
+        corners_lidar.reshape(-1, 3), cam_info).reshape(N, 8, 3)
+    centres_lidar = gt_boxes[:, :3].astype(np.float64)
+    centres_cam = _lidar_to_camera_opencv(centres_lidar, cam_info)
 
-    boxes, camera_intrinsic, annotations, vehicle_locations, vehicle_rotations = whales.get_sample_data(step, sample, index, save_interval)
-        # ann_recs = frame[sample][f'{sample}_{step*save_interval}']['sample_annotation']
-        # print(annotations)
-        # print(ann_recs)
-        
-        # veh_locations = frame[sample][f'{sample}_{step*save_interval}']['veh_locations']
-        # veh_rotations = frame[sample][f'{sample}_{step*save_interval}']['veh_rotations']
-    # print(frame)
-        # print(boxes)
-
-    # assert sd_rec[
-    #     'sensor_modality'] == 'camera', 'Error: get_2d_boxes only works' \
-    #     ' for camera sample_data!'
-    # if not sd_rec['is_key_frame']:
-    #     raise ValueError(
-    #         'The 2D re-projections are available only for keyframes.')
-
-        # for ann_rec in ann_recs:
-    repro_recs = []
-
-    for ann_rec in annotations:
-        # print(ann_rec)
-        # Augment sample_annotation with token information.
-
-        # Get the box in global coordinates.
-        "modified by siwei"
-        box = whales.get_box(ann_rec)#,whales.scenen[sample]['vehicle_num'])
-
-        # print(box)
-
-        # Move them to the ego-pose frame.
-        box.translate(-np.array(vehicle_locations[index]))
-        box.rotate(Quaternion(whales.euler_to_quaternion(vehicle_rotations[index])).inverse)
-
-        # Move them to the calibrated sensor frame.
-
-        # Filter out the corners that are not in front of the calibrated
-        # sensor.
-        corners_3d = box.corners()
-        in_front = np.argwhere(corners_3d[2, :] > 0).flatten()
-        corners_3d = corners_3d[:, in_front]
-
-        # Project 3d box to 2d.
-        corner_coords = view_points(corners_3d, camera_intrinsic,
-                                    True).T[:, :2].tolist()
-
-        # Keep only corners that fall within the image.
-        if len(corner_coords)>2:
-            final_coords = post_process_coords(corner_coords)
-        else:
-            final_coords = None
-        # Skip if the convex hull of the re-projected corners
-        # does not intersect the image canvas.
-        if final_coords is None:
+    for i in range(N):
+        name = gt_names[i] if len(gt_names) else 'Vehicle'
+        if name not in whales_categories:
             continue
-        else:
-            min_x, min_y, max_x, max_y = final_coords
+        corners = corners_cam[i]
+        in_front = corners[:, 2] > 0
+        if in_front.sum() < 2:
+            continue
+        corners_visible = corners[in_front]
+        uv = (K @ corners_visible.T).T
+        uv_px = uv[:, :2] / uv[:, 2:3]
+        poly = post_process_coords(uv_px.tolist(), imsize=(W, H))
+        if poly is None:
+            continue
+        min_x, min_y, max_x, max_y = poly
 
-        # Generate dictionary record to be included in the .json file.
-        repro_rec = generate_record(ann_rec, min_x, min_y, max_x, max_y,
-                                    step, cam_path)
+        rec = generate_record(
+            ann_name=name,
+            x1=float(min_x), y1=float(min_y),
+            x2=float(max_x), y2=float(max_y),
+            image_id=image_id,
+            file_name=file_name,
+        )
 
-        # If mono3d=True, add 3D annotations in camera coordinates
-        if mono3d and (repro_rec is not None):
-            loc = box.center.tolist()
-
-            dim = box.wlh
-            dim[[0, 1, 2]] = dim[[1, 2, 0]]  # convert wlh to our lhw
-            dim = dim.tolist()
-
-            rot = box.orientation.yaw_pitch_roll[0]
-            rot = [-rot]  # convert the rot to our cam coordinate
-
-            global_velo2d = whales.box_velocity(sample, save_interval, step, ann_rec, save_interval * 0.1)[:2]
-            global_velo3d = np.array([*global_velo2d, 0.0])
-            # print(len(vehicle_locations[index]), vehicle_locations[index])
-            e2g_r_mat = Quaternion(whales.euler_to_quaternion(vehicle_rotations[index])).rotation_matrix
-            c2e_r_mat = Quaternion([0, 0, 0, 1]).rotation_matrix
-            cam_velo3d = global_velo3d @ np.linalg.inv(
-                e2g_r_mat).T @ np.linalg.inv(c2e_r_mat).T
-            velo = cam_velo3d[0::2].tolist()
-
-            repro_rec['bbox_cam3d'] = loc + dim + rot
-            repro_rec['velo_cam3d'] = velo
-
-            center3d = np.array(loc).reshape([1, 3])
-            center2d = points_cam2img(
-                center3d, camera_intrinsic, with_depth=True)
-            repro_rec['center2d'] = center2d.squeeze().tolist()
-            # normalized center2D + depth
-            # if samples with depth < 0 will be removed
-            if repro_rec['center2d'][2] <= 0:
+        if mono3d:
+            cx, cy, cz = centres_cam[i]
+            if cz <= 0:
                 continue
+            L, W_box, H_box = gt_boxes[i, 3], gt_boxes[i, 4], gt_boxes[i, 5]
+            # mmdet3d camera-frame ry rotates around +y (down). The LiDAR
+            # yaw must be corrected for the camera's own orientation in the
+            # agent body (the y-flip from LiDAR to camera already flips the
+            # lidar-yaw sign, and the camera rotation subtracts cam_yaw).
+            ry = -float(gt_boxes[i, 6]) - cam_yaw_rad
+            rec['bbox_cam3d'] = [float(cx), float(cy), float(cz),
+                                 float(L), float(H_box), float(W_box), ry]
 
-            attr_name = box.name
-            attr_id = whales_categories.index(attr_name)
-            repro_rec['attribute_name'] = attr_name
-            repro_rec['attribute_id'] = attr_id
+            if gt_velocity is not None and len(gt_velocity) > i:
+                vx_l, vy_l = float(gt_velocity[i, 0]), float(gt_velocity[i, 1])
+                v_lidar_carla = np.array([vx_l, -vy_l, 0.0])
+                v_cam = _CARLA_CAM_TO_OPENCV @ v_lidar_carla
+                rec['velo_cam3d'] = [float(v_cam[0]), float(v_cam[2])]
+            else:
+                rec['velo_cam3d'] = [0.0, 0.0]
 
-        repro_recs.append(repro_rec)
+            centre = np.array([[cx, cy, cz]], dtype=np.float64)
+            centre2d = points_cam2img(centre, K, with_depth=True)
+            rec['center2d'] = centre2d.squeeze().tolist()
 
-    return repro_recs
+            rec['attribute_name'] = name
+            rec['attribute_id'] = whales_categories.index(name)
+
+        recs.append(rec)
+
+    return recs
 
 
 def post_process_coords(
@@ -524,64 +615,17 @@ def post_process_coords(
         return None
 
 
-def generate_record(ann_rec: dict, x1: float, y1: float, x2: float, y2: float,
-                    step: int, filename: str) -> OrderedDict:
-    """Generate one 2D annotation record given various informations on top of
-    the 2D bounding box coordinates.
-
-    Args:
-        ann_rec (dict): Original 3d annotation record.
-        x1 (float): Minimum value of the x coordinate.
-        y1 (float): Minimum value of the y coordinate.
-        x2 (float): Maximum value of the x coordinate.
-        y2 (float): Maximum value of the y coordinate.
-        sample_data_token (str): Sample data token.
-        filename (str):The corresponding image file where the annotation
-            is present.
-
-    Returns:
-        dict: A sample 2D annotation record.
-            - file_name (str): flie name
-            - image_id (str): sample data token
-            - area (float): 2d box area
-            - category_name (str): category name
-            - category_id (int): category id
-            - bbox (list[float]): left x, top y, dx, dy of 2d box
-            - iscrowd (int): whether the area is crowd
-    """
-    repro_rec = OrderedDict()
-    repro_rec['sample_data_token'] = step
-    coco_rec = dict()
-
-    relevant_keys = [
-        'attribute_tokens',
-        'category_name',
-        'instance_token',
-        'next',
-        'num_lidar_pts',
-        'num_radar_pts',
-        'prev',
-        'sample_annotation_token',
-        'sample_data_token',
-        'visibility_token',
-    ]
-
-    for key, value in ann_rec.items():
-        if key in relevant_keys:
-            repro_rec[key] = value
-
-    repro_rec['bbox_corners'] = [x1, y1, x2, y2]
-    repro_rec['filename'] = filename
-
-    coco_rec['file_name'] = filename
-    coco_rec['image_id'] = filename.split('/')[-1].split('.')[0] + '_' + str(step)
-    coco_rec['area'] = (y2 - y1) * (x2 - x1)
-
-    cat_name = ann_rec['type']
-    coco_rec['category_name'] = cat_name
-    # print(cat_name)
-    coco_rec['category_id'] = whales_categories.index(cat_name)
-    coco_rec['bbox'] = [x1, y1, x2 - x1, y2 - y1]
-    coco_rec['iscrowd'] = 0
-
-    return coco_rec
+def generate_record(ann_name: str,
+                    x1: float, y1: float, x2: float, y2: float,
+                    image_id: str,
+                    file_name: str) -> dict:
+    """Build a single COCO-style 2D annotation record."""
+    return {
+        'file_name': file_name,
+        'image_id': image_id,
+        'area': float((y2 - y1) * (x2 - x1)),
+        'category_name': ann_name,
+        'category_id': whales_categories.index(ann_name),
+        'bbox': [float(x1), float(y1), float(x2 - x1), float(y2 - y1)],
+        'iscrowd': 0,
+    }

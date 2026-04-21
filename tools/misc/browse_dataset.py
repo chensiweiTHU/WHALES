@@ -207,7 +207,8 @@ def main():
                 'S3DISSegDataset', 'S3DISDataset'
         ]:
             data_path = data_info['pts_path']
-        elif dataset_type in ['NuScenesDataset', 'LyftDataset']:
+        elif dataset_type in ['NuScenesDataset', 'LyftDataset',
+                              'WhalesDataset']:
             data_path = data_info['lidar_path']
         elif dataset_type in ['NuScenesMonoDataset']:
             data_path = data_info['file_name']

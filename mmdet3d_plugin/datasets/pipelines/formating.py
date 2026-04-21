@@ -2,8 +2,16 @@
 import numpy as np
 from mmcv.parallel import DataContainer as DC
 
-from mmdet3d.core.bbox import BaseInstance3DBoxes
+from mmdet3d.core.bbox import BaseInstance3DBoxes as _MMDetBaseBox3D
 from mmdet3d.core.points import BasePoints
+from ...core.bbox.structures.base_box3d import (
+    BaseInstance3DBoxes as _PluginBaseBox3D)
+
+# Accept both mmdet3d's and mmdet3d_plugin's BaseInstance3DBoxes - they
+# form two parallel class trees with the same name, and datasets defined
+# inside the plugin emit plugin-tree boxes while some legacy code paths
+# emit installed-mmdet3d boxes.
+BaseInstance3DBoxes = (_MMDetBaseBox3D, _PluginBaseBox3D)
 from mmdet.datasets.builder import PIPELINES
 from mmdet.datasets.pipelines import to_tensor
 

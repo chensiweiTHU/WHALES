@@ -1,6 +1,23 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import mmcv
 
+try:
+    import mmdet3d.core as _mmdet3d_core  # noqa: F401
+except Exception:
+    pass
+
+from mmcv.utils import Registry as _Registry
+
+_orig_register_module = _Registry._register_module
+
+
+def _register_with_force(self, module_class, module_name=None, force=False):
+    return _orig_register_module(
+        self, module_class, module_name=module_name, force=True)
+
+
+_Registry._register_module = _register_with_force
+
 import mmdet
 import mmseg
 from .version import __version__, short_version

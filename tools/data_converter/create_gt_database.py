@@ -190,34 +190,19 @@ def create_groundtruth_database(dataset_class_name,
                     with_label_3d=True)
             ])
 
-    elif dataset_class_name == 'DolphinsDataset':
+    elif dataset_class_name == 'WhalesDataset':
         dataset_cfg.update(
-            use_valid_flag=True,
+            use_valid_flag=False,
             pipeline=[
                 dict(
                     type='LoadPointsFromFile',
                     coord_type='LIDAR',
                     load_dim=4,
                     use_dim=4),
-                        dict(
-                type='LoadPointsFromCooperativeAgents',
-                coord_type='LIDAR',
-                load_dim=4, use_dim=4,
-                
-                ),
-    # dict(type='LoadAnnotations3D'),
-                dict(type='RawlevelPointCloudFusion'),
-                # dict(
-                #     type='LoadPointsFromMultiSweeps',
-                #     sweeps_num=10,
-                #     load_dim=5,
-                #     use_dim=[0, 1, 2, 3, 4],
-                #     pad_empty_sweeps=True,
-                #     remove_close=True),
                 dict(
                     type='LoadAnnotations3D',
                     with_bbox_3d=True,
-                    with_label_3d=True)
+                    with_label_3d=True),
             ])
 
     elif dataset_class_name == 'WaymoDataset':

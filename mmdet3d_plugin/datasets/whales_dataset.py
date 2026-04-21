@@ -16,12 +16,12 @@ from .pipelines import Compose
 
 @DATASETS.register_module()
 class WhalesDataset(Custom3DDataset):
-    r"""NuScenes Dataset.
+    r"""WHALES Dataset.
 
-    This class serves as the API for experiments on the NuScenes Dataset.
-
-    Please refer to `NuScenes Dataset <https://www.nuscenes.org/download>`_
-    for data downloading.
+    API for 3D detection experiments on the WHALES dataset. The dataset is
+    structured like nuScenes (info PKLs per split, per-sample LiDAR + four
+    cameras), so the loader, evaluation backend, and annotation conventions
+    mirror nuScenes where possible.
 
     Args:
         ann_file (str): Path of annotation file.
@@ -100,7 +100,6 @@ class WhalesDataset(Custom3DDataset):
         'vehicle.parked',
         'vehicle.stopped',
     ]
-    # https://github.com/nutonomy/nuscenes-devkit/blob/57889ff20678577025326cfc24e57424a829be0a/python-sdk/nuscenes/eval/detection/evaluate.py#L222 # noqa
     ErrNameMapping = {
         'trans_err': 'mATE',
         'scale_err': 'mASE',
@@ -108,18 +107,11 @@ class WhalesDataset(Custom3DDataset):
         'vel_err': 'mAVE',
         'attr_err': 'mAAE'
     }
-    # CLASSES = ('car', 'truck', 'trailer', 'bus', 'construction_vehicle',
-    #            'bicycle', 'motorcycle', 'pedestrian', 'traffic_cone',
-    #            'barrier')
 
     CLASSES = ('Vehicle', 'Pedestrian', 'Cyclist')
+
     def config_factory(self, eval_configs, eval_version=None):
         eval_configs.class_range = self.class_range
-        # {
-        #     "Vehicle": 50,
-        #     "Pedestrian": 40,
-        #     "Cyclist": 40,
-        # }
         eval_configs.class_names = eval_configs.class_range.keys()
         return eval_configs
     def __init__(self,
@@ -155,7 +147,7 @@ class WhalesDataset(Custom3DDataset):
             test_mode=test_mode)
         for i in range(len(self.data_infos)):
             self.data_infos[i]['dataset_index'] = i
-        self.ƒ = with_velocity
+        self.with_velocity = with_velocity
         self.eval_version = eval_version
         self.img_prefix = img_prefix
         self.class_range = class_range
@@ -172,7 +164,6 @@ class WhalesDataset(Custom3DDataset):
             )
         self.analize_annotations()
         self.history_results = defaultdict(dict)
-        # print(self.pipeline)
 
     def get_cat_ids(self, idx):
         """Get category distribution of single scene.
@@ -224,7 +215,6 @@ class WhalesDataset(Custom3DDataset):
             dict: Training data dict of the corresponding index.
         """
         input_dict = self.get_data_info(index)
-        # print(input_dict)
         if input_dict is None:
             return None
         self.pre_pipeline(input_dict)
@@ -285,27 +275,24 @@ class WhalesDataset(Custom3DDataset):
                 - ann_info (dict): Annotation info.
         """
         info = self.data_infos[index]
-        # standard protocal modified from SECOND.Pytorch
         input_dict = dict(
             sample_idx=info['token'],
             pts_filename=info['lidar_path'],
             sweeps=info['sweeps'],
             timestamp=info['timestamp'],
-            ego2global_translation = info['ego2global_translation'],
-            ego2global_rotation = info['ego2global_rotation'],
-            sample_info = info['sample_info'],
+            ego2global_translation=info['ego2global_translation'],
+            ego2global_rotation=info['ego2global_rotation'],
+            sample_info=info['sample_info'],
             img_prefix=self.data_root,
-            
         )
 
         if self.modality['use_camera']:
             image_paths = []
             lidar2img_rts = []
             img_info = {}
-            for cam_type, cam_info in info['cams'].items():
+            for cam_info in info['cams'].values():
                 image_paths.append(cam_info['data_path'])
-                
-                # obtain lidar to image transformation matrix
+                # Build lidar->image matrix via the sensor2lidar extrinsic.
                 lidar2cam_r = np.linalg.inv(cam_info['sensor2lidar_rotation'])
                 lidar2cam_t = cam_info[
                     'sensor2lidar_translation'] @ lidar2cam_r.T
@@ -363,7 +350,6 @@ class WhalesDataset(Custom3DDataset):
             input_dict['cooperative_agents'] = dict()
             history_results = dict()
             ego_token = veh_token
-            # print('ego_token', ego_token)
             for v_id in cooperative_ids:
                 cp_dict = self.get_data_info(v_id, cooperative=False)
                 veh_token = cp_dict['veh_token']
@@ -373,12 +359,8 @@ class WhalesDataset(Custom3DDataset):
                     history_v_id = v_id - len(cooperative_ids) - 1
                     history_results[veh_token] = self.history_results[history_v_id]
             if self.test_mode:
-                history_results[ego_token]= self.history_results[index - len(cooperative_ids) - 1]
-                # print('history_results', history_results.keys())
-                # if int(frame_token) !=5:
-                #     input_dict['history_results'] = history_results
-                # else:
-                #     input_dict['history_results'] = dict() # the first frame has no history
+                history_results[ego_token] = self.history_results[
+                    index - len(cooperative_ids) - 1]
                 input_dict['history_results'] = history_results
         return input_dict
 
@@ -405,8 +387,7 @@ class WhalesDataset(Custom3DDataset):
         if self.use_valid_flag:
             mask = info['valid_flag']
         else:
-            # mask = info['num_lidar_pts'] > 0
-            mask = True
+            mask = np.ones(len(info['gt_boxes']), dtype=bool)
         gt_bboxes_3d = info['gt_boxes'][mask]
         if gt_bboxes_3d.ndim>2:
             gt_bboxes_3d = gt_bboxes_3d.reshape(-1, 7)
@@ -422,17 +403,6 @@ class WhalesDataset(Custom3DDataset):
                 gt_labels_3d.append(-1)
         gt_labels_3d = np.array(gt_labels_3d)
 
-        # if self.with_velocity:
-        #     gt_velocity = info['gt_velocity'][mask]
-        #     if gt_velocity.ndim>2:
-        #         gt_velocity = gt_velocity.reshape(-1, 2)
-        #     nan_mask = np.isnan(gt_velocity[:, 0])
-        #     gt_velocity[nan_mask] = [0.0, 0.0]
-        #     gt_bboxes_3d = np.concatenate([gt_bboxes_3d, gt_velocity], axis=-1)
-
-        # the nuscenes box center is [0.5, 0.5, 0.5], we change it to be
-        # the same as KITTI (0.5, 0.5, 0)
-
         gt_bboxes_3d = LiDARInstance3DBoxes(
             gt_bboxes_3d,
             box_dim=gt_bboxes_3d.shape[-1],
@@ -445,31 +415,22 @@ class WhalesDataset(Custom3DDataset):
         return anns_results
     
     def analize_annotations(self):
-        bottom_heights={
-            "Vehicle": [],
-            "Pedestrian": [],
-            "Cyclist": [],
-        }
-        bbox_sizes={
-            "Vehicle": [],
-            "Pedestrian": [],
-            "Cyclist": [],
-        }
+        """Collect bottom heights and box sizes per class.
+
+        Kept as a hook for offline stat dumps; returns nothing but walks
+        every sample once so the dataset is eagerly validated.
+        """
+        bottom_heights = {c: [] for c in self.CLASSES}
+        bbox_sizes = {c: [] for c in self.CLASSES}
         for i in range(len(self)):
             anns = self.get_ann_info(i)
             info = self.data_infos[i]
             for j in range(len(anns['gt_bboxes_3d'])):
                 class_name = anns['gt_names'][j]
-                bottom_heights[class_name].append(float(anns['gt_bboxes_3d'][j].bottom_height))
-                bbox_sizes[class_name].append(info['sample_info']['sample_annotation'][j]['size'])
-        # for k, v in bottom_heights.items():
-        #     if len(v) > 0:
-        #         print('mean bottom height of {}: {}'.format(k, np.mean(v)))
-        # for k, v in bbox_sizes.items():
-        #     if len(v) > 0:
-        #         v=np.array(v)
-        #         print('mean size of {}: {}'.format(k, np.mean(v, axis=0)))
-
+                bottom_heights[class_name].append(
+                    float(anns['gt_bboxes_3d'][j].bottom_height))
+                bbox_sizes[class_name].append(
+                    info['sample_info']['sample_annotation'][j]['size'])
 
     def _format_bbox(self, results, jsonfile_prefix=None):
         """Convert the results to the standard format.
@@ -495,40 +456,19 @@ class WhalesDataset(Custom3DDataset):
                                              mapped_class_names,
                                              self.eval_detection_configs,
                                              self.eval_version)
-            for i, box in enumerate(boxes):
+            for box in boxes:
                 name = mapped_class_names[box.label]
-                "we don't have attr in dolphins dataset"
-                # if np.sqrt(box.velocity[0]**2 + box.velocity[1]**2) > 0.2:
-                #     if name in [
-                #             'car',
-                #             'construction_vehicle',
-                #             'bus',
-                #             'truck',
-                #             'trailer',
-                #     ]:
-                #         attr = 'vehicle.moving'
-                #     elif name in ['bicycle', 'motorcycle']:
-                #         attr = 'cycle.with_rider'
-                #     else:
-                #         attr = NuScenesDataset.DefaultAttribute[name]
-                # else:
-                #     if name in ['pedestrian']:
-                #         attr = 'pedestrian.standing'
-                #     elif name in ['bus']:
-                #         attr = 'vehicle.stopped'
-                #     else:
-                #         attr = NuScenesDataset.DefaultAttribute[name]
-                attr = name
                 nusc_anno = dict(
                     sample_token=sample_token,
                     translation=box.center.tolist(),
                     size=box.wlh.tolist(),
                     rotation=box.orientation.elements.tolist(),
-                    # velocity=box.velocity[:2].tolist(),
+                    # WHALES predicts static boxes only; velocity slot is
+                    # preserved for nuScenes-style eval tooling.
                     velocity=[0.0, 0.0],
                     detection_name=name,
                     detection_score=box.score,
-                    attribute_name=attr)
+                    attribute_name=name)
                 annos.append(nusc_anno)
             nusc_annos[sample_token] = annos
         nusc_submissions = {
@@ -560,33 +500,29 @@ class WhalesDataset(Custom3DDataset):
         Returns:
             dict: Dictionary of evaluation details.
         """
-        # from nuscenes import NuScenes
-        from nuscenes.eval.detection.evaluate import NuScenesEval
-        from mmdet3d.datasets.dolphins_eval import DolphinsEval
-        from tools.data_converter.dolphins import Dolphins
+        from mmdet3d_plugin.datasets.whales_eval import WhalesEval
+        from tools.data_converter.whales import Whales
 
         output_dir = osp.join(*osp.split(result_path)[:-1])
-        dolphins = Dolphins(
-            version=self.version, dataroot=self.data_root, verbose=False,train_test='test')
+        whales = Whales(
+            version=self.version, dataroot=self.data_root,
+            verbose=False, train_test='test')
         eval_set_map = {
             'v1.0-mini': 'mini_val',
-            "v1.0-trainval": "val",
-            "":"val",
-            "none":"val",
-            "v1.0": "val",
+            'v1.0-trainval': 'val',
+            '': 'val',
+            'none': 'val',
+            'v1.0': 'val',
         }
-        dolphins_eval = DolphinsEval(
-            dolphins=dolphins,
-            dolphins_dataset=self,
+        evaluator = WhalesEval(
+            whales=whales,
+            whales_dataset=self,
             config=self.eval_detection_configs,
             result_path=result_path,
             eval_set=eval_set_map[self.version],
-
             output_dir=output_dir,
             verbose=False)
-        
-
-        dolphins_eval.main(render_curves=False)
+        evaluator.main(render_curves=False)
 
         # record metrics
         metrics = mmcv.load(osp.join(output_dir, 'metrics_summary.json'))
@@ -638,21 +574,7 @@ class WhalesDataset(Custom3DDataset):
         # 1. list of dict('boxes_3d': ..., 'scores_3d': ..., 'labels_3d': ...)
         # 2. list of dict('pts_bbox' or 'img_bbox':
         #     dict('boxes_3d': ..., 'scores_3d': ..., 'labels_3d': ...))
-        # this is a workaround to enable evaluation of both formats on nuScenes
-        # refer to https://github.com/open-mmlab/mmdetection3d/issues/449
-        "Added by Siwei Chen"
-        "Calculate communication cost"
-        transmitted_data_size = 0
-        # print('Evaluating Communication Cost...')
-        # for i in range(len(results)):
-        #     print('Processing result:', results[i])
-        #     if 'transmitted_data_size' in results[i]['img_metas'][0]:
-        #         transmitted_data_size += results[i]['img_metas'][0]['transmitted_data_size']
-        # print('Average transmitted_data_size: {:.2f} MB'.format(transmitted_data_size/len(results)/1024/1024))
-
         key_list = list(results[0].keys())
-        # if 'img_metas' in key_list:
-        #     key_list.remove('img_metas')
 
         if not ('pts_bbox' in key_list or 'img_bbox' in results[0]):
             result_files = self._format_bbox(results, jsonfile_prefix)
@@ -720,12 +642,8 @@ class WhalesDataset(Custom3DDataset):
             dict(
                 type='LoadPointsFromFile',
                 coord_type='LIDAR',
-                load_dim=5,
-                use_dim=5,
-                file_client_args=dict(backend='disk')),
-            dict(
-                type='LoadPointsFromMultiSweeps',
-                sweeps_num=10,
+                load_dim=4,
+                use_dim=4,
                 file_client_args=dict(backend='disk')),
             dict(
                 type='DefaultFormatBundle3D',
@@ -755,22 +673,18 @@ class WhalesDataset(Custom3DDataset):
                 result = result['pts_bbox']
             data_info = self.data_infos[i]
             pts_path = data_info['lidar_path']
-            # pts_path = result['lidar_path']
             file_name = pts_path.replace('/', '_').replace('.', '_')
-            # file_name = osp.split(pts_path)[-1].split('.')[0]+str(i)
             points = self._extract_data(i, pipeline, 'points').numpy()
-            # for now we convert points into depth mode
             points = Coord3DMode.convert_point(points, Coord3DMode.LIDAR,
                                                Coord3DMode.DEPTH)
-            #inds = result['scores_3d'] > 0.1
             gt_bboxes = self.get_ann_info(i)['gt_bboxes_3d'].tensor.numpy()
             show_gt_bboxes = Box3DMode.convert(gt_bboxes, Box3DMode.LIDAR,
                                                Box3DMode.DEPTH)
             show_gt = True
             if not show_gt:
-                pred_bboxes = result['boxes_3d'][:].tensor.numpy()#inds].tensor.numpy()
-                show_pred_bboxes = Box3DMode.convert(pred_bboxes, Box3DMode.LIDAR,
-                                                 Box3DMode.DEPTH)
+                pred_bboxes = result['boxes_3d'][:].tensor.numpy()
+                show_pred_bboxes = Box3DMode.convert(
+                    pred_bboxes, Box3DMode.LIDAR, Box3DMode.DEPTH)
             else:
                 show_pred_bboxes = None
             show_result(points, show_gt_bboxes, show_pred_bboxes, out_dir,
@@ -798,18 +712,12 @@ def output_to_nusc_box(detection):
     box_gravity_center = box3d.gravity_center.numpy()
     box_dims = box3d.dims.numpy()
     box_yaw = box3d.yaw.numpy()
-    # TODO: check whether this is necessary
-    # with dir_offset & dir_limit in the head
-    box_yaw = -box_yaw  # nuscenes: box_yaw = -box_yaw - np.pi / 2
+    # Align with the nuscenes-devkit convention used by NuScenesBox.
+    box_yaw = -box_yaw
     box_list = []
     for i in range(len(box3d)):
         quat = pyquaternion.Quaternion(axis=[0, 0, 1], radians=box_yaw[i])
-        # velocity = (*box3d.tensor[i, 7:9], 0.0)
         velocity = (0.0, 0.0, 0.0)
-        # velo_val = np.linalg.norm(box3d[i, 7:9])
-        # velo_ori = box3d[i, 6]
-        # velocity = (
-        # velo_val * np.cos(velo_ori), velo_val * np.sin(velo_ori), 0.0)
         box = NuScenesBox(
             box_gravity_center[i],
             box_dims[i],
@@ -826,34 +734,33 @@ def lidar_nusc_box_to_global(info,
                              classes,
                              eval_configs,
                              eval_version='detection_cvpr_2019'):
-    """Convert the box from ego to global coordinate.
+    """Convert predicted NuScenesBoxes from the WHALES ego (LiDAR) frame to CARLA world.
 
     Args:
-        info (dict): Info for a specific sample data, including the
-            calibration information.
-        boxes (list[:obj:`NuScenesBox`]): List of predicted NuScenesBoxes.
-        classes (list[str]): Mapped classes in the evaluation.
-        eval_configs (object): Evaluation configuration object.
-        eval_version (str): Evaluation version.
-            Default: 'detection_cvpr_2019'
+        info (dict): the sample's info dict (key-frame) with calibration.
+        boxes (list[:obj:`NuScenesBox`]): detector predictions in ego frame.
+        classes (list[str]): class names for per-class distance filtering.
+        eval_configs (object): eval config providing ``class_range``.
+        eval_version (str): evaluation config version tag.
 
     Returns:
-        list: List of standard NuScenesBoxes in the global
-            coordinate.
+        list[:obj:`NuScenesBox`]: boxes expressed in CARLA world coordinates.
     """
+    yflip = pyquaternion.Quaternion(axis=[1, 0, 0], angle=np.pi)
+
     box_list = []
     for box in boxes:
-        # Move box to ego vehicle coord system
-        box.center[1] = -box.center[1]
-        box.rotate(pyquaternion.Quaternion(info['lidar2ego_rotation']))
-        box.translate(np.array(info['lidar2ego_translation']))
-        # filter det in ego.
         cls_range_map = eval_configs.class_range
         radius = np.linalg.norm(box.center[:2], 2)
         det_range = cls_range_map[classes[box.label]]
         if radius > det_range:
             continue
-        # Move box to global coord system
+
+        box.rotate(yflip)
+        box.center[2] = -box.center[2]
+
+        box.rotate(pyquaternion.Quaternion(info['lidar2ego_rotation']))
+        box.translate(np.array(info['lidar2ego_translation']))
         box.rotate(pyquaternion.Quaternion(info['ego2global_rotation']))
         box.translate(np.array(info['ego2global_translation']))
         box_list.append(box)

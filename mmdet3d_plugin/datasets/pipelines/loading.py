@@ -2,15 +2,11 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import mmcv
 import numpy as np
-import torch
 
 from mmdet3d.core.points import BasePoints, get_points_type
 from mmdet.datasets.builder import PIPELINES
 from mmdet.datasets.pipelines import LoadAnnotations, LoadImageFromFile
-from mmdet3d.core.bbox import LiDARInstance3DBoxes
 
-import os
-import cv2
 
 @PIPELINES.register_module()
 class LoadMultiViewImageFromFiles(object):
@@ -27,7 +23,6 @@ class LoadMultiViewImageFromFiles(object):
     def __init__(self, to_float32=False, color_type='unchanged'):
         self.to_float32 = to_float32
         self.color_type = color_type
-        self.saved_count = 0
 
     def __call__(self, results):
         """Call function to load multi-view image from files.
@@ -48,236 +43,17 @@ class LoadMultiViewImageFromFiles(object):
                 - img_norm_cfg (dict): Normalization configuration of images.
         """
         filename = results['img_filename']
-        # img is of shape (h, w, c, num_views)
         img = np.stack(
             [mmcv.imread(name, self.color_type) for name in filename], axis=-1)
         if self.to_float32:
             img = img.astype(np.float32)
-        visualize = False
-        if visualize:
-            img_filenames = results.get('img_filename', [])
-            lidar2img_list = results.get('lidar2img', [])
-            
-            # Order matters! Check specific names before generic ones
-            cam_name_to_view = {
-                'camera_b': 'back',
-                'camera_l': 'left',
-                'camera_r': 'right',
-                'camera': 'front',
-            }
-            
-            # Build view data dictionary
-            view_data = {}
-            for idx, (img_path, lidar2img) in enumerate(zip(img_filenames, lidar2img_list)):
-                for cam_name, view_name in cam_name_to_view.items():
-                    if cam_name in img_path:
-                        view_data[view_name] = {
-                            'img_idx': idx,
-                            'lidar2img': lidar2img
-                        }
-                        print(f"Matched '{cam_name}' in {img_path} → {view_name}")
-                        break
-            
-            boxes_3d = results['gt_bboxes_3d']
-            boxe_corners = boxes_3d.corners.cpu().numpy()  # Shape: (N, 8, 3)
-            
-            # DEBUG: Print first box coordinates
-            print(f"\nFirst GT box corners (LiDAR coords):\n{boxe_corners[0]}")
-            print(f"First GT box center: {boxes_3d.gravity_center[0]}")
-            print(f"First GT box dims: {boxes_3d.dims[0]}")
-            
-            view_names = ['front', 'back', 'left', 'right']
-            
-            for view_name in view_names:
-                if view_name not in view_data:
-                    print(f'Skipping {view_name} - not found in data')
-                    continue
-                    
-                print(f"\n{'='*60}")
-                print(f"Processing {view_name} view")
-                print(f"{'='*60}")
-                
-                view_idx = view_data[view_name]['img_idx']
-                lidar2img = np.array(view_data[view_name]['lidar2img'])
-                
-                # DEBUG: Print transformation matrix
-                print(f"lidar2img shape: {lidar2img.shape}")
-                print(f"lidar2img matrix:\n{lidar2img}")
-                
-                if lidar2img.shape == (4, 4):
-                    lidar2img = lidar2img[:3, :]
-                
-                # Take first box for detailed debugging
-                first_box_corners = boxe_corners[0]  # Shape: (8, 3)
-                first_box_homo = np.concatenate(
-                    [first_box_corners, np.ones((8, 1))], axis=1
-                )  # Shape: (8, 4)
-                
-                # Project first box
-                first_box_2d = (lidar2img @ first_box_homo.T).T  # Shape: (8, 3)
-                
-                print(f"\nFirst box after projection (before division):")
-                print(f"  X range: {first_box_2d[:, 0].min():.2f} to {first_box_2d[:, 0].max():.2f}")
-                print(f"  Y range: {first_box_2d[:, 1].min():.2f} to {first_box_2d[:, 1].max():.2f}")
-                print(f"  Z range: {first_box_2d[:, 2].min():.2f} to {first_box_2d[:, 2].max():.2f}")
-                
-                # Check if box is in front of camera
-                if (first_box_2d[:, 2] > 0).all():
-                    first_box_pixels = first_box_2d[:, :2] / first_box_2d[:, 2:3]
-                    print(f"\nFirst box pixel coordinates:")
-                    print(f"  X range: {first_box_pixels[:, 0].min():.2f} to {first_box_pixels[:, 0].max():.2f}")
-                    print(f"  Y range: {first_box_pixels[:, 1].min():.2f} to {first_box_pixels[:, 1].max():.2f}")
-                else:
-                    print(f"\nFirst box is behind camera!")
-                
-                # Process all boxes
-                boxe_corners_flat = boxe_corners.reshape(-1, 3)
-                boxe_corners_homo = np.concatenate(
-                    [boxe_corners_flat, np.ones((boxe_corners_flat.shape[0], 1))], 
-                    axis=1
-                )
-                
-                boxe_corners_2d = (lidar2img @ boxe_corners_homo.T).T
-                boxe_corners_2d = boxe_corners_2d.reshape(-1, 8, 3)
-                
-                valid_boxes = []
-                for i, box in enumerate(boxe_corners_2d):
-                    if (box[:, 2] > 0).all():
-                        box_2d = box[:, :2] / box[:, 2:3]
-                        valid_boxes.append(box_2d)
-                
-                view_img = img[..., view_idx].copy()
-                view_img = np.ascontiguousarray(view_img)
-                
-                # DEBUG: Print image shape
-                print(f"Image shape: {view_img.shape}")
-                
-                if len(valid_boxes) > 0:
-                    boxe_corners_2d = np.array(valid_boxes)
-                    view_img = self.draw_boxes(view_img, boxe_corners_2d, color=(0, 255, 0))
-                    print(f'Drew {len(valid_boxes)} GT boxes on {view_name}')
-                else:
-                    print(f'No valid GT boxes for {view_name}')
-                
-                # Test boxes
-                # test_boxes_3d = LiDARInstance3DBoxes(
-                #     [[2.8, 0, -1.8, 5, 2, 1.8, 0],
-                #     [2.8, 2, -1.8, 5, 2, 1.8, 0]],
-                # )
-                # test_corners = test_boxes_3d.corners.cpu().numpy()
-                # test_corners_flat = test_corners.reshape(-1, 3)
-                # test_corners_homo = np.concatenate(
-                #     [test_corners_flat, np.ones((test_corners_flat.shape[0], 1))], 
-                #     axis=1
-                # )
-                
-                # test_2d = (lidar2img @ test_corners_homo.T).T
-                # test_2d = test_2d.reshape(-1, 8, 3)
-                
-                # test_valid_boxes = []
-                # for box in test_2d:
-                #     if (box[:, 2] > 0).all():
-                #         box_2d = box[:, :2] / box[:, 2:3]
-                #         test_valid_boxes.append(box_2d)
-                
-                # if len(test_valid_boxes) > 0:
-                #     test_corners_2d = np.array(test_valid_boxes)
-                #     view_img = self.draw_boxes(view_img, test_corners_2d, color=(0, 255, 255))
-                device_id = int(os.environ.get('LOCAL_RANK', -1))
-                if device_id < 0 and torch.cuda.is_available():
-                    device_id = torch.cuda.current_device()
-                device_prefix = f'gpu{device_id}_' if device_id >= 0 else ''
-                output_path = f'visualizations/{device_prefix}camera_{view_name}_{self.saved_count}.jpg'                
-                output_path = f'visualizations/camera_{view_name}_{self.saved_count}.jpg'
-                cv2.imwrite(output_path, view_img)
-                print(f'Written {output_path}')
-        # if visualize:
-        #     #lidar2img = results['lidar2img'][0] # 4x4 matrix
-        #     vel_ego_to_cam = np.array([[0,-1,0,0], [0,0,-1,0], [1,0,0,0]])
-        #     # lidar2img = results['img_info']['viewpad'] # 4x4 matrix
-        #     # print(results['lidar2img'][0])
-        #     lidar2img = results['lidar2img'][0]
-        #     lidar2img = lidar2img[:3,:3]
-        #     lidar2img[0,0] = 960
-        #     lidar2img[1,1] = 960
-        #     boxes_3d = results['gt_bboxes_3d']
-        #     boxe_corners = boxes_3d.corners
-        #     dims = boxes_3d.dims.cpu().numpy()
-        #     # reshape to NX8,3
-        #     boxe_corners = boxe_corners.reshape(-1, 3)
-        #     # repeat dims
-        #     repeated_dims = np.repeat(dims, 8, axis=0)
-        #     boxe_corners[:,0] = boxe_corners[:,0]#+0.5*repeated_dims[:,0]
-        #     # to numpy
-        #     boxe_corners = boxe_corners.cpu().numpy()
-        #     # pad 1 to convert to homogenuous coordinates
-        #     boxe_corners = np.concatenate([boxe_corners, np.ones((boxe_corners.shape[0],1))], axis=1)
-        #     # apply transformation
-        #     boxe_corners_2d = np.matmul(vel_ego_to_cam, boxe_corners.T).T
-        #     boxe_corners_2d = np.matmul(lidar2img, boxe_corners_2d.T).T
-        #     # filter z<0 and divide z
-        #     boxe_corners_2d = boxe_corners_2d.reshape(-1, 8, 3)
-        #     newboxes = []
-        #     for box in boxe_corners_2d:
-        #         if (box[:,2]>0).all():
-        #             # divide depth
-        #             box = box/box[:,2].reshape((-1,1))
-        #             newboxes.append(box)
-        #     boxe_corners_2d = np.asarray(newboxes)
-        #     # get first 2 dims
-        #     boxe_corners_2d = boxe_corners_2d[:,:,0:2]
-        #     front_img = img[..., 0]
-        #     front_img = np.ascontiguousarray(front_img)
-        #     front_img = self.draw_boxes(front_img, boxe_corners_2d)
-        #     "use a standrad box in front to test"
-        #     "5,0,-1.8,5,2,1.8"
-        #     gt_bboxes_3d = LiDARInstance3DBoxes(
-        #     [[2.8,0,-1.8,5,2,1.8,0],
-        #     #  [5,0,-1.8,5,2,1.8,0.5*math.pi],
-        #      [2.8,2,-1.8,5,2,1.8,0],
-        #     #  [5,2,-1.8,5,2,1.8,0.5*math.pi],
-        #      ],)
-        #     boxe_corners = gt_bboxes_3d.corners
-        #     dims = gt_bboxes_3d.dims.cpu().numpy()
-        #     # reshape to NX8,3
-        #     boxe_corners = boxe_corners.reshape(-1, 3)
-        #     # repeat dims
-        #     repeated_dims = np.repeat(dims, 8, axis=0)
-        #     boxe_corners[:,0] = boxe_corners[:,0]#+0.5*repeated_dims[:,0]
-        #     # to numpy
-        #     boxe_corners = boxe_corners.cpu().numpy()
-        #     # pad 1 to convert to homogenuous coordinates
-        #     boxe_corners = np.concatenate([boxe_corners, np.ones((boxe_corners.shape[0],1))], axis=1)
-        #     # apply transformation
-        #     boxe_corners_2d = np.matmul(vel_ego_to_cam, boxe_corners.T).T
-        #     boxe_corners_2d = np.matmul(lidar2img, boxe_corners_2d.T).T
-        #     # filter z<0 and divide z
-        #     boxe_corners_2d = boxe_corners_2d.reshape(-1, 8, 3)
-        #     newboxes = []
-        #     for box in boxe_corners_2d:
-        #         if (box[:,2]>0).all():
-        #             # divide depth
-        #             box = box/box[:,2].reshape((-1,1))
-        #             newboxes.append(box)
-        #     boxe_corners_2d = np.asarray(newboxes)
-        #     # get first 2 dims
-        #     boxe_corners_2d = boxe_corners_2d[:,:,0:2]
-        #     front_img = np.ascontiguousarray(front_img)
-        #     front_img = self.draw_boxes(front_img, boxe_corners_2d,color=(0,255,255))
-        #     # for box in boxe_corners_2d:
-        #     #     front_img = cv2.circle(front_img, (int(box[0]), int(box[1])), 5, (0, 255, 0), 2)
-        #     cv2.imwrite(f'camera_front_{self.saved_count}.jpg', front_img)
-        #     print('written')
-        self.saved_count += 1
+
         results['filename'] = filename
-        # unravel to list, see `DefaultFormatBundle` in formating.py
-        # which will transpose each image separately and then stack into array
+        # Unravel to list; see `DefaultFormatBundle` in formating.py, which
+        # transposes each image separately and stacks into an array.
         results['img'] = [img[..., i] for i in range(img.shape[-1])]
         results['img_shape'] = img.shape
-        # single_img_shape = img.shape[:3]  # (1080, 1920, 3)
-        # results['img_shape'] = [single_img_shape] * img.shape[-1]
         results['ori_shape'] = img.shape
-        # Set initial values for default meta_keys
         results['pad_shape'] = img.shape
         results['scale_factor'] = 1.0
         num_channels = 1 if len(img.shape) < 3 else img.shape[2]
@@ -288,22 +64,10 @@ class LoadMultiViewImageFromFiles(object):
         return results
 
     def __repr__(self):
-        """str: Return a string that describes the module."""
         repr_str = self.__class__.__name__
         repr_str += f'(to_float32={self.to_float32}, '
         repr_str += f"color_type='{self.color_type}')"
         return repr_str
-    
-    def draw_boxes(self, image, boxes, color=(0, 255, 0), thickness=2):
-        if boxes is None:
-            return image
-        for box in boxes:
-            box = box.astype(np.int32)
-            for i in range(4):
-                cv2.line(image, tuple(box[i]), tuple(box[(i + 1) % 4]), color, thickness)
-                cv2.line(image, tuple(box[i + 4]), tuple(box[(i + 1) % 4 + 4]), color, thickness)
-                cv2.line(image, tuple(box[i]), tuple(box[i + 4]), color, thickness)
-        return image
 
 
 @PIPELINES.register_module()
@@ -492,7 +256,7 @@ class PointSegClassMapping(object):
         # build cat_id to class index mapping
         neg_cls = len(valid_cat_ids)
         self.cat_id2class = np.ones(
-            self.max_cat_id + 1, dtype=np.int) * neg_cls
+            self.max_cat_id + 1, dtype=np.int64) * neg_cls
         for cls_idx, cat_id in enumerate(valid_cat_ids):
             self.cat_id2class[cat_id] = cls_idx
 
@@ -819,11 +583,11 @@ class LoadAnnotations3D(LoadAnnotations):
             self.file_client = mmcv.FileClient(**self.file_client_args)
         try:
             mask_bytes = self.file_client.get(pts_instance_mask_path)
-            pts_instance_mask = np.frombuffer(mask_bytes, dtype=np.int)
+            pts_instance_mask = np.frombuffer(mask_bytes, dtype=np.int64)
         except ConnectionError:
             mmcv.check_file_exist(pts_instance_mask_path)
             pts_instance_mask = np.fromfile(
-                pts_instance_mask_path, dtype=np.long)
+                pts_instance_mask_path, dtype=np.int64)
 
         results['pts_instance_mask'] = pts_instance_mask
         results['pts_mask_fields'].append('pts_instance_mask')
@@ -844,13 +608,13 @@ class LoadAnnotations3D(LoadAnnotations):
             self.file_client = mmcv.FileClient(**self.file_client_args)
         try:
             mask_bytes = self.file_client.get(pts_semantic_mask_path)
-            # add .copy() to fix read-only bug
+            # .copy() because np.frombuffer returns a read-only view
             pts_semantic_mask = np.frombuffer(
                 mask_bytes, dtype=self.seg_3d_dtype).copy()
         except ConnectionError:
             mmcv.check_file_exist(pts_semantic_mask_path)
             pts_semantic_mask = np.fromfile(
-                pts_semantic_mask_path, dtype=np.long)
+                pts_semantic_mask_path, dtype=np.int64)
 
         results['pts_semantic_mask'] = pts_semantic_mask
         results['pts_seg_fields'].append('pts_semantic_mask')
@@ -903,109 +667,6 @@ class LoadAnnotations3D(LoadAnnotations):
         repr_str += f'{indent_str}poly2mask={self.poly2mask})'
         return repr_str
 
-
-@PIPELINES.register_module()
-class DebugVisualizeProcessedData(object):
-    """Visualize data after all pipeline transforms"""
-    
-    def __init__(self, save_interval=10, output_dir='debug_processed'):
-        self.save_interval = save_interval
-        self.output_dir = output_dir
-        self.counter = 0
-        import os
-        os.makedirs(output_dir, exist_ok=True)
-    
-    def __call__(self, results):
-        """Visualize what the model will actually receive"""
-        if self.counter % self.save_interval != 0:
-            self.counter += 1
-            return results
-        
-        # print(f"\n{'='*60}")
-        # print(f"DEBUG: Processed data #{self.counter}")
-        # print(f"{'='*60}")
-        
-        # Get images (they're still numpy arrays at this point)
-        imgs = results['img']  # List of images
-        gt_bboxes_3d = results['gt_bboxes_3d']
-        lidar2img = results.get('lidar2img', [])
-
-        if len(gt_bboxes_3d) == 0:
-            print("No GT boxes in this sample, skipping visualization")
-            self.counter += 1
-            return results
-        
-        # Denormalize images for visualization
-        if 'img_norm_cfg' in results:
-            mean = np.array(results['img_norm_cfg']['mean'])
-            std = np.array(results['img_norm_cfg']['std'])
-        else:
-            mean = np.array([123.675, 116.28, 103.53])
-            std = np.array([58.395, 57.12, 57.375])
-        
-        # Project and draw boxes
-        boxe_corners = gt_bboxes_3d.corners.cpu().numpy()
-        view_names = ['front', 'back', 'left', 'right']
-        
-        for view_idx, (img, view_name) in enumerate(zip(imgs[:4], view_names)):
-            # Denormalize
-            img_vis = img.copy()
-            img_vis = img_vis * std + mean
-            img_vis = np.clip(img_vis, 0, 255).astype(np.uint8)
-            img_vis = cv2.cvtColor(img_vis, cv2.COLOR_RGB2BGR)
-            
-            # Get lidar2img for this view
-            if view_idx < len(lidar2img):
-                l2i = np.array(lidar2img[view_idx])
-                # print(f"\nView {view_name} lidar2img sum: {l2i.sum():.2f}")
-                
-                if l2i.shape == (4, 4):
-                    l2i = l2i[:3, :]
-                
-                # Project boxes
-                boxe_corners_flat = boxe_corners.reshape(-1, 3)
-                boxe_corners_homo = np.concatenate(
-                    [boxe_corners_flat, np.ones((boxe_corners_flat.shape[0], 1))], 
-                    axis=1
-                )
-                
-                boxe_corners_2d = (l2i @ boxe_corners_homo.T).T
-                boxe_corners_2d = boxe_corners_2d.reshape(-1, 8, 3)
-                
-                # Draw valid boxes
-                valid_boxes = []
-                for box in boxe_corners_2d:
-                    if (box[:, 2] > 0).all():
-                        box_2d = box[:, :2] / box[:, 2:3]
-                        valid_boxes.append(box_2d)
-                
-                if len(valid_boxes) > 0:
-                    for box in valid_boxes:
-                        box = box.astype(np.int32)
-                        for i in range(4):
-                            cv2.line(img_vis, tuple(box[i]), tuple(box[(i + 1) % 4]), 
-                                   (0, 255, 0), 2)
-                            cv2.line(img_vis, tuple(box[i + 4]), tuple(box[(i + 1) % 4 + 4]), 
-                                   (0, 255, 0), 2)
-                            cv2.line(img_vis, tuple(box[i]), tuple(box[i + 4]), 
-                                   (0, 255, 0), 2)
-                    # print(f"  Drew {len(valid_boxes)} boxes on {view_name}")
-                # else:
-                    # print(f"  No valid boxes for {view_name}")
-            
-            # Save
-            # output_path = f'{self.output_dir}/processed_{view_name}_{self.counter}_cuda.jpg'
-            device_id = int(os.environ.get('LOCAL_RANK', -1))
-            if device_id < 0 and torch.cuda.is_available():
-                device_id = torch.cuda.current_device()
-            device_prefix = f'gpu{device_id}_' if device_id >= 0 else ''
-            output_path = f'{self.output_dir}/{device_prefix}processed_{view_name}_{self.counter}.jpg'
-            cv2.imwrite(output_path, img_vis)
-            # print(f"  Saved: {output_path}")
-        
-        self.counter += 1
-        return results
-    
 
 @PIPELINES.register_module()
 class FilterOccludedObjects(object):

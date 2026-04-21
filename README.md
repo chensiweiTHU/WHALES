@@ -17,8 +17,14 @@ WHALES (**W**ireless en**H**anced **A**utonomous vehicles with **L**arge number 
 - **2025-6-17** – WHALES was accepted by IROS 2025!
 
 ## Table of Contents
+- [Dataset Overview](#dataset-overview)
 - [Getting Started](#getting-started)
 - [Training & Evaluation](#training--evaluation)
+- [Visualization](#visualization)
+- [Scheduling Algorithms](#scheduling-algorithms)
+- [Experimental Results](#experimental-results)
+- [Roadmap](#roadmap)
+- [Citation](#citation)
 
 ## Highlights
 - **Largest agent count**: 8.4 agents per scene with synchronized LiDAR-camera suites.
@@ -72,13 +78,22 @@ WHALES (**W**ireless en**H**anced **A**utonomous vehicles with **L**arge number 
 1. **Download** the full dataset from Google Drive: [Download Whales](https://drive.google.com/file/d/1XPbTyNLznpltdkzz-yKPKRIq1hASDN7X/view).
 2. Place extracted files under `./data/whales/`.
 3. Preprocess:
-   ```python
+   ```bash
    python tools/create_data.py whales --root-path ./data/whales/ --out-dir ./data/whales/ --extra-tag whales
    ```
-   Generated `.pkl` files will appear in `./data/whales/`.
+   This emits, under `./data/whales/`:
+   - `whales_infos_{train,val}.pkl` — LiDAR info PKLs for `WhalesDataset`.
+   - `whales_infos_{train,val}_mono3d.coco.json` — per-camera mono3D COCO files for `WhalesMonoDataset` (cam-only training).
+   - `whales_dbinfos_train.pkl` + `whales_gt_database/` — GT-sampling database used by LiDAR configs' augmentation step.
 
 ## Training & Evaluation
-Use configs in `./configs_cooperative/`.
+Configs are organised as:
+
+- `./configs/_base_/` — shared dataset, model, and schedule bases.
+- `./configs/standalone/` — single-agent baselines (PointPillars, SECOND, CenterPoint, FCOS3D, VoxelNeXt, etc. on LiDAR and monocular 3D).
+- `./configs/cooperative/` — V2X cooperative-perception recipes (PointPillars, VoxelNeXt, BEVFusion, FCooper, V2VNet, V2X-ViT, OPV2V, FFNet, plus the scheduling studies).
+
+Pick any leaf config under those trees and run:
 
 - **Training**
   ```bash
@@ -88,12 +103,40 @@ Use configs in `./configs_cooperative/`.
   ```bash
   bash tools/dist_test.sh <config>.py <model>.pth <gpu_num> --eval bbox
   ```
-Metrics: mAP and NDS.
+
+Both `WhalesDataset` (LiDAR) and `WhalesMonoDataset` (monocular 3D) are registered; the COCO JSONs emitted by the preprocessing step drive the mono3D path, the info PKLs drive the LiDAR path. Metrics: mAP and NDS.
+
+## Visualization
+![WHALES visualization](figs/visualization.svg)
+
+`tools/misc/visualize_whales.py` can render from all three data representations (raw `frame_info.json`, info PKL, mono3D COCO):
+
+```bash
+# Raw CARLA frame_info.json: reconstruct ego-frame boxes + overlay on the 4 cameras + BEV.
+python tools/misc/visualize_whales.py frame_info \
+    --path data/whales/<scene>/<frame>/frame_info.json --agent vehicle0
+
+# Single entry from the info PKL (one agent-frame).
+python tools/misc/visualize_whales.py pkl \
+    --path data/whales/whales_infos_val.pkl --token <scene>_<frame>_<agent>
+
+# Batched renders: 2x2 camera grid alongside the BEV, one frame per scene.
+python tools/misc/visualize_whales.py pkl_grid \
+    --pkls data/whales/whales_infos_{train,val}.pkl \
+    --num-per-pkl 20 --one-per-scene --out whales_vis/
+
+# Mono3D COCO renders with 2D bbox + 3D wireframe per annotation.
+python tools/misc/visualize_whales.py coco \
+    --path data/whales/whales_infos_val_mono3d.coco.json --image-id <image_id>
+python tools/misc/visualize_whales.py coco_batch \
+    --path data/whales/whales_infos_val_mono3d.coco.json \
+    --num-tokens 20 --one-per-scene --out whales_vis_coco/
+```
 
 ## Scheduling Algorithms
 Agent scheduling pipelines live in `./mmdet3d_plugin/datasets/pipelines/cooperative_perception.py`.  
 CAHS prioritizes collaborators by historical coverage and predicted gains.  
-![CAHS overview](imgs/overview.svg)
+![CAHS overview](figs/overview.svg)
 
 ## Experimental Results
 
