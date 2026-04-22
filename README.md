@@ -75,7 +75,7 @@ WHALES (**W**ireless en**H**anced **A**utonomous vehicles with **L**arge number 
 
 
 ### Data Preparation
-1. **Download** the full dataset from Google Drive: [Download Whales](https://drive.google.com/file/d/1XPbTyNLznpltdkzz-yKPKRIq1hASDN7X/view).
+1. **Download** the full dataset from Google Drive: [Download Whales](https://drive.google.com/drive/folders/1L9xkBAfFox1WZR5aBGhmW6jF9dXIBLru?usp=sharing).
 2. Place extracted files under `./data/whales/`.
 3. Preprocess:
    ```bash
