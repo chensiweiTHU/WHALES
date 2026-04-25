@@ -17,6 +17,12 @@ from .roi_heads import *  # noqa: F401,F403
 from .segmentors import *  # noqa: F401,F403
 from .voxel_encoders import *  # noqa: F401,F403
 
+# Register the PETR sub-namespace (detector, head, transformer, etc.).
+from ..petr.models import *  # noqa: F401,F403
+# Register the BEVFormer sub-namespace (detector, head, transformer, attns,
+# bbox coders/assigners/match-costs).
+from .. import bevformer as _bevformer_register  # noqa: F401
+
 __all__ = [
     'VOXEL_ENCODERS', 'MIDDLE_ENCODERS', 'FUSION_LAYERS', 'build_backbone',
     'build_neck', 'build_roi_extractor', 'build_shared_head', 'build_head',

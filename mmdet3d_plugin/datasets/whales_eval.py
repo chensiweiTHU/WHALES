@@ -21,6 +21,7 @@ from nuscenes.eval.detection.data_classes import DetectionConfig, DetectionMetri
 from nuscenes.utils.data_classes import Box
 from nuscenes.eval.detection.render import summary_plot, class_pr_curve, class_tp_curve, dist_pr_curve, visualize_sample
 from nuscenes.utils.geometry_utils import points_in_box
+from nuscenes.eval.tracking.data_classes import TrackingBox
 def filter_eval_boxes(nusc: NuScenes,
                       eval_boxes: EvalBoxes,
                       max_dist: Dict[str, float],
@@ -49,24 +50,7 @@ def filter_eval_boxes(nusc: NuScenes,
         eval_boxes.boxes[sample_token] = [box for box in eval_boxes[sample_token] if not box.num_pts == 0]
         point_filter += len(eval_boxes[sample_token])
 
-        # Perform bike-rack filtering.
-        sample_anns = nusc.get('sample', sample_token)['sample_annotation']
-        bikerack_recs = [ann for ann in sample_anns if
-                         ann['type'] == 'static_object.bicycle_rack']
-        bikerack_boxes = [Box(rec['translation'], rec['size'], Quaternion(rec['rotation'])) for rec in bikerack_recs]
-        filtered_boxes = []
-        for box in eval_boxes[sample_token]:
-            if box.__getattribute__(class_field) in ['Cyclist']:
-                in_a_bikerack = False
-                for bikerack_box in bikerack_boxes:
-                    if np.sum(points_in_box(bikerack_box, np.expand_dims(np.array(box.translation), axis=1))) > 0:
-                        in_a_bikerack = True
-                if not in_a_bikerack:
-                    filtered_boxes.append(box)
-            else:
-                filtered_boxes.append(box)
-
-        eval_boxes.boxes[sample_token] = filtered_boxes
+        # No bike-rack annotations in WHALES; filter is a no-op.
         bike_rack_filter += len(eval_boxes.boxes[sample_token])
 
     if verbose:
@@ -90,14 +74,13 @@ def _get_box_class_field(eval_boxes: EvalBoxes) -> str:
         if len(val) > 0:
             box = val[0]
             break
+    if box is None:
+        return 'detection_name'
     if isinstance(box, DetectionBox):
-        class_field = 'detection_name'
-    elif isinstance(box, TrackingBox):
-        class_field = 'tracking_name'
-    else:
-        raise Exception('Error: Invalid box type: %s' % box)
-
-    return class_field
+        return 'detection_name'
+    if isinstance(box, TrackingBox):
+        return 'tracking_name'
+    raise Exception('Error: Invalid box type: %s' % box)
 
 
 class DetectionBox(EvalBox):
@@ -373,7 +356,7 @@ class WhalesEval:
         #     attribute_map = {a['token']: a['name'] for a in nusc.attribute}
 
         if verbose:
-            print('Loading annotations for {} split from nuScenes version: {}'.format(eval_split, dolph.version))
+            print('Loading annotations for {} split from nuScenes version: {}'.format(eval_split, whales.version))
         # Read out all sample_tokens in DB.
         # sample_tokens_all = [s['token'] for s in nusc.sample]
         # assert len(sample_tokens_all) > 0, "Error: Database has no samples!"
@@ -400,7 +383,7 @@ class WhalesEval:
 
         if eval_split == 'test':
             # Check that you aren't trying to cheat :).
-            assert len(dolph.sample_annotation) > 0, \
+            assert len(whales.sample_annotation) > 0, \
                 'Error: You are trying to evaluate on the test set but you do not have the annotations!'
 
         # sample_tokens = []
@@ -416,17 +399,17 @@ class WhalesEval:
         # Load annotations and filter predictions and annotations.
         tracking_id_set = set()
         sample_tokens_all = []
-        for scene in dolph.scenes:
-            steps = len(dolph.frames[scene])
-            interval = dolph.config[scene]['world']['save_interval']
+        for scene in whales.scenes:
+            steps = len(whales.frames[scene])
+            interval = whales.config[scene]['world']['save_interval']
             time_interval = 0.1 * interval
-            vehicle_num = dolph.scenen[scene]['vehicle_num']
+            vehicle_num = whales.scenen[scene]['vehicle_num']
             for step in range(1,steps+1):
                 for v_id in range(vehicle_num+1):
                     sample_token = f'{scene}_{step*interval}_{v_id}'
                     sample_tokens_all.append(sample_token)
                     sample_boxes = []
-                    for sample_annotation in dolph.frames[scene][f'{scene}_{step*interval}']['sample_annotation']:
+                    for sample_annotation in whales.frames[scene][f'{scene}_{step*interval}']['sample_annotation']:
                         # boxes = list(self.get_box(curr_anno)) 
                         if box_cls == DetectionBox:
                             # Get label name in detection task and filter unused labels.
@@ -434,7 +417,7 @@ class WhalesEval:
                             if detection_name is None:
                                 continue
                             velocity = np.array(
-                                    dolph.box_velocity(scene, interval, step, sample_annotation, time_interval)[:2]) 
+                                    whales.box_velocity(scene, interval, step, sample_annotation, time_interval)[:2]) 
                             sample_boxes.append(
                                 box_cls(
                                     sample_token=sample_token,
@@ -466,7 +449,7 @@ class WhalesEval:
                                     translation=sample_annotation['translation'],
                                     size=sample_annotation['size'],
                                     rotation=sample_annotation['rotation'],
-                                    velocity=dolph.box_velocity(sample_annotation['token'])[:2],
+                                    velocity=whales.box_velocity(sample_annotation['token'])[:2],
                                     num_pts=sample_annotation['num_lidar_pts'] + sample_annotation['num_radar_pts'],
                                     tracking_id=tracking_id,
                                     tracking_name=tracking_name,

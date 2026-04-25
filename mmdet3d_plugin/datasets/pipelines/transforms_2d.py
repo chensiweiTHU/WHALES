@@ -19,7 +19,7 @@ class ResizeMultiViewImage(Resize):
 
     def _resize_img(self, results):
         """Resize images with ``results['scale']``."""
-        for key in results.get('img_fields', ['img']):
+        for key in (results.get('img_fields') or ['img']):
             img_list = []
             for key_im in results['img']:
                 if self.keep_ratio:
@@ -48,27 +48,22 @@ class ResizeMultiViewImage(Resize):
             results['scale_factor'] = scale_factor
             results['keep_ratio'] = self.keep_ratio
             
-            # FIX: Update lidar2img matrices
-            # if 'lidar2img' in results:
-            #     scale_matrix = np.eye(4, dtype=np.float32)
-            #     scale_matrix[0, 0] = w_scale  # Scale fx and cx
-            #     scale_matrix[1, 1] = h_scale  # Scale fy and cy
-            #     results['lidar2img'] = [scale_matrix @ l2i for l2i in results['lidar2img']]
             if 'lidar2img' in results:
                 updated_lidar2img = []
                 for l2i in results['lidar2img']:
                     l2i = np.array(l2i, dtype=np.float32)
-                    
-                    # Create a copy to avoid modifying original
                     l2i_scaled = l2i.copy()
-                    
-                    # Scale the intrinsic part (first 2 rows affect image coordinates)
-                    l2i_scaled[0, :] *= w_scale  # Scale x: fx, cx, and x-component of translation
-                    l2i_scaled[1, :] *= h_scale  # Scale y: fy, cy, and y-component of translation
-                    
+                    l2i_scaled[0, :] *= w_scale
+                    l2i_scaled[1, :] *= h_scale
                     updated_lidar2img.append(l2i_scaled)
+                results['lidar2img'] = updated_lidar2img
 
     def __call__(self, results):
+
+        # Drop the placeholder scale_factor seeded by the multi-view loader.
+        if self.img_scale is not None:
+            if isinstance(results.get('scale_factor'), float):
+                results.pop('scale_factor', None)
 
         if 'scale' not in results:
             if 'scale_factor' in results:

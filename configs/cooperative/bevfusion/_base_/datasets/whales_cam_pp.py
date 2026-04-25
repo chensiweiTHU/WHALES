@@ -10,7 +10,7 @@ input_modality = dict(
     use_radar=False,
     use_map=False,
     use_external=False)
-img_scale = (800, 448)
+img_scale = (1120, 640)
 num_views = 4
 img_norm_cfg = dict(mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
 train_pipeline = [
@@ -30,9 +30,9 @@ train_pipeline = [
     dict(type='ObjectRangeFilter', point_cloud_range=point_cloud_range),
     dict(type='ObjectNameFilter', classes=class_names),
     dict(type='PointShuffle'),
-    dict(type='MyResize', img_scale=img_scale, keep_ratio=True),
-    dict(type='MyNormalize', **img_norm_cfg),
-    dict(type='MyPad', size_divisor=32),
+    dict(type='ResizeMultiViewImage', img_scale=img_scale, keep_ratio=True),
+    dict(type='NormalizeMultiViewImage', **img_norm_cfg),
+    dict(type='PadMultiViewImage', size_divisor=32),
     dict(type='DefaultFormatBundle3D', class_names=class_names),
     dict(type='Collect3D', keys=['points', 'img', 'gt_bboxes_3d', 'gt_labels_3d'])
 ]
@@ -44,10 +44,6 @@ test_pipeline = [
         use_dim=4,
 
     ),
-    dict(
-        type='LoadPointsFromMultiSweeps',
-        sweeps_num=10,
-    ),
     dict(type='LoadMultiViewImageFromFiles'),
     dict(
         type='MultiScaleFlipAug3D',
@@ -55,9 +51,9 @@ test_pipeline = [
         pts_scale_ratio=1,
         flip=False,
         transforms=[
-            dict(type='MyResize', img_scale=img_scale, keep_ratio=True),
-            dict(type='MyNormalize', **img_norm_cfg),
-            dict(type='MyPad', size_divisor=32),
+            dict(type='ResizeMultiViewImage', img_scale=img_scale, keep_ratio=True),
+            dict(type='NormalizeMultiViewImage', **img_norm_cfg),
+            dict(type='PadMultiViewImage', size_divisor=32),
             dict(
                 type='DefaultFormatBundle3D',
                 class_names=class_names,
@@ -71,7 +67,6 @@ data = dict(
     train=dict(
             type=dataset_type,
             data_root=data_root,
-            num_views=num_views,
             ann_file=data_root + '/whales_infos_train.pkl',
             load_interval=1,
             pipeline=train_pipeline,
@@ -83,7 +78,6 @@ data = dict(
     val=dict(
         type=dataset_type,
         data_root=data_root,
-        num_views=num_views,
         ann_file=data_root + '/whales_infos_val.pkl',
         load_interval=1,
         pipeline=test_pipeline,
@@ -94,7 +88,6 @@ data = dict(
     test=dict(
         type=dataset_type,
         data_root=data_root,
-        num_views=num_views,
         ann_file=data_root + '/whales_infos_val.pkl',
         load_interval=1,
         pipeline=test_pipeline,

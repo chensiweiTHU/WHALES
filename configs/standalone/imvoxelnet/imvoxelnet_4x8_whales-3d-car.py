@@ -1,3 +1,7 @@
+custom_imports = dict(
+    imports=['mmdet3d_plugin.models', 'mmdet3d_plugin.datasets'],
+    allow_failed_imports=False)
+
 model = dict(
     type='ImVoxelNet',
     backbone=dict(
@@ -148,7 +152,7 @@ log_config = dict(
     interval=50,
     hooks=[dict(type='TextLoggerHook'),
            dict(type='TensorboardLoggerHook')])
-evaluation = dict(interval=1)
+evaluation = dict(interval=1, save_best='pts_bbox_NuScenes/mAP', rule='greater')
 dist_params = dict(backend='nccl')
 find_unused_parameters = True
 log_level = 'INFO'

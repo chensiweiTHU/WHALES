@@ -1,0 +1,1 @@
+../imvotenet/imvotenet_faster_rcnn_r50_fpn_2x4_whales-3d.py

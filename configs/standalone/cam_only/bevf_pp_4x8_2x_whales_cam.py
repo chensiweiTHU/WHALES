@@ -1,0 +1,1 @@
+../../cooperative/bevfusion/bevfusion/cam_stream/bevf_pp_4x8_2x_whales_cam.py

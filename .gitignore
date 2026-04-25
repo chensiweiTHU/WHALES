@@ -24,6 +24,12 @@ ENV/
 .vscode/
 .idea/
 *~
+*.swp
+*.swo
+*.bak
+*.orig
+\#*\#
+.\#*
 
 # Test / type / lint caches
 .cache
@@ -48,12 +54,17 @@ data/
 
 # Training / logging outputs
 work_dirs*/
+checkpoints/
+checkpoints*/
 exps/
 *.log
 *.log.json
+events.out.tfevents.*
 
 # Model checkpoints
 *.pth
+*.pt
+*.ckpt
 
 # Visualization outputs
 visual/
@@ -67,6 +78,12 @@ debug_processed/
 *.npy
 *.obj
 *.ply
+
+# macOS / Windows OS metadata
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
 
 # macOS duplicate-file artifacts
 *copy.py

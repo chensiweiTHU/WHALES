@@ -1,0 +1,1 @@
+../fcos3d/fcos3d_r101_caffe_fpn_gn-head_dcn_2x8_1x_whales-mono3d.py

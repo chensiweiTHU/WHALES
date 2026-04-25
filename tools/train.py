@@ -18,6 +18,9 @@ from mmdet3d.apis import train_model
 from mmdet3d.datasets import build_dataset
 from mmdet3d.models import build_model
 from mmdet3d.utils import collect_env, get_root_logger
+
+import mmdet3d_plugin.models  # noqa: F401  registers plugin overrides
+import mmdet3d_plugin.datasets  # noqa: F401
 from mmdet.apis import set_random_seed
 from mmseg import __version__ as mmseg_version
 import sys
@@ -134,7 +137,7 @@ def main():
         cfg.work_dir = args.work_dir
     elif cfg.get('work_dir', None) is None:
         # use config filename as default work_dir if cfg.work_dir is None
-        cfg.work_dir = osp.join('./work_dirs',
+        cfg.work_dir = osp.join('./checkpoints',
                                 osp.splitext(osp.basename(args.config))[0])
     if args.resume_from is not None:
         cfg.resume_from = args.resume_from

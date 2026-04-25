@@ -15,6 +15,9 @@ from mmdet3d.datasets import build_dataloader, build_dataset
 from mmdet3d.models import build_model
 from mmdet.apis import multi_gpu_test, set_random_seed
 from mmdet.datasets import replace_ImageToTensor
+
+import mmdet3d_plugin.models  # noqa: F401  registers plugin overrides
+import mmdet3d_plugin.datasets  # noqa: F401
 import sys
 sys.path.append(os.getcwd())
 

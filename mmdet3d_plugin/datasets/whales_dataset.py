@@ -290,19 +290,26 @@ class WhalesDataset(Custom3DDataset):
             image_paths = []
             lidar2img_rts = []
             img_info = {}
+            # WHALES LiDAR is y=left, cam poses are CARLA (y=right), K is OpenCV.
+            _Y_FLIP = np.diag([1.0, -1.0, 1.0])
+            _CARLA_CAM_TO_OPENCV = np.array([
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, -1.0],
+                [1.0, 0.0, 0.0],
+            ])
             for cam_info in info['cams'].values():
                 image_paths.append(cam_info['data_path'])
-                # Build lidar->image matrix via the sensor2lidar extrinsic.
-                lidar2cam_r = np.linalg.inv(cam_info['sensor2lidar_rotation'])
-                lidar2cam_t = cam_info[
-                    'sensor2lidar_translation'] @ lidar2cam_r.T
+                R_s2l = np.asarray(cam_info['sensor2lidar_rotation'])
+                t_s2l = np.asarray(cam_info['sensor2lidar_translation'])
+                R_l_to_cam = _CARLA_CAM_TO_OPENCV @ R_s2l.T @ _Y_FLIP
+                t_l_to_cam = -_CARLA_CAM_TO_OPENCV @ R_s2l.T @ t_s2l
                 lidar2cam_rt = np.eye(4)
-                lidar2cam_rt[:3, :3] = lidar2cam_r.T
-                lidar2cam_rt[3, :3] = -lidar2cam_t
-                intrinsic = cam_info['cam_intrinsic']
+                lidar2cam_rt[:3, :3] = R_l_to_cam
+                lidar2cam_rt[:3, 3] = t_l_to_cam
+                intrinsic = np.asarray(cam_info['cam_intrinsic'])
                 viewpad = np.eye(4)
                 viewpad[:intrinsic.shape[0], :intrinsic.shape[1]] = intrinsic
-                lidar2img_rt = (viewpad @ lidar2cam_rt.T)
+                lidar2img_rt = viewpad @ lidar2cam_rt
                 lidar2img_rts.append(lidar2img_rt)
 
             img_info = {

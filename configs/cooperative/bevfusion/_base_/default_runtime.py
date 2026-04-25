@@ -1,4 +1,9 @@
-checkpoint_config = dict(interval=1)
+custom_imports = dict(
+    imports=['mmdet3d_plugin.models', 'mmdet3d_plugin.datasets'],
+    allow_failed_imports=False)
+
+checkpoint_config = dict(interval=1, save_last=True)
+evaluation = dict(interval=1, save_best='pts_bbox_NuScenes/mAP', rule='greater')
 # yapf:disable push
 # By default we use textlogger hook and tensorboard
 # For more loggers see

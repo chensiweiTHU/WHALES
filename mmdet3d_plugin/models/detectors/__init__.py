@@ -1,5 +1,8 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 from .base import Base3DDetector
+from .bevf_faster_rcnn import BEVF_FasterRCNN
+from .bevf_centerpoint import BEVF_CenterPoint
+from .bevf_transfusion import BEVF_TransFusion
 from .centerpoint import CenterPoint
 from .dynamic_voxelnet import DynamicVoxelNet
 from .fcos_mono3d import FCOSMono3D
@@ -19,5 +22,6 @@ __all__ = [
     'Base3DDetector', 'VoxelNet', 'DynamicVoxelNet', 'MVXTwoStageDetector',
     'DynamicMVXFasterRCNN', 'MVXFasterRCNN', 'PartA2', 'VoteNet', 'H3DNet',
     'CenterPoint', 'SSD3DNet', 'ImVoteNet', 'SingleStageMono3DDetector',
-    'FCOSMono3D', 'ImVoxelNet', 'GroupFree3DNet'
+    'FCOSMono3D', 'ImVoxelNet', 'GroupFree3DNet',
+    'BEVF_FasterRCNN', 'BEVF_CenterPoint', 'BEVF_TransFusion'
 ]
