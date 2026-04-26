@@ -138,23 +138,23 @@ CAHS prioritizes collaborators by historical coverage and predicted gains.
 
 ## Experimental Results
 
-All numbers below are reported as `50m / 100m`, the two evaluation ranges used by the WHALES protocol (per-class radial distance from ego). Modality column: **L** = LiDAR, **C** = Camera, **L+C** = both.
+All numbers below are reported as `50m / 100m`, the two evaluation ranges used by the WHALES protocol (per-class radial distance from ego).
 
 ### Stand-alone 3D Object Detection
-| Method | Modality | AP_Veh ↑ | AP_Ped ↑ | AP_Cyc ↑ | mAP ↑ | mATE ↓ | mASE ↓ | mAOE ↓ | mAVE ↓ | NDS ↑ |
-|---|:---:|---|---|---|---|---|---|---|---|---|
-| PointPillars | L | 67.1 / 41.5 | 38.0 / 6.3 | 37.3 / 11.6 | 47.5 / 19.8 | 0.117 / 0.247 | 0.876 / 0.880 | 1.069 / 1.126 | 1.260 / 1.625 | 33.8 / 18.6 |
-| SECOND | L | 58.5 / 38.8 | 27.1 / 12.1 | 24.1 / 12.9 | 36.6 / 21.2 | 0.106 / 0.156 | 0.875 / 0.878 | 1.748 / 1.729 | 1.005 / 1.256 | 28.5 / 20.3 |
-| RegNet | L | 66.9 / 42.3 | 38.7 / 8.4 | 32.9 / 11.7 | 46.2 / 20.8 | 0.119 / 0.240 | 0.874 / 0.881 | 1.079 / 1.158 | 1.231 / 1.421 | 33.2 / 19.2 |
-| VoxelNeXt | L | **64.7 / 42.3** | **52.2 / 27.4** | **35.9 / 9.0** | **50.9 / 26.2** | **0.075 / 0.142** | 0.877 / 0.877 | 1.212 / 1.147 | 1.133 / 1.348 | **36.0 / 22.9** |
+| Method | AP_Veh ↑ | AP_Ped ↑ | AP_Cyc ↑ | mAP ↑ |
+|---|---|---|---|---|
+| PointPillars | 67.1 / 41.5 | 38.0 / 6.3 | 37.3 / 11.6 | 47.5 / 19.8 |
+| SECOND | 58.5 / 38.8 | 27.1 / 12.1 | 24.1 / 12.9 | 36.6 / 21.2 |
+| RegNet | 66.9 / 42.3 | 38.7 / 8.4 | 32.9 / 11.7 | 46.2 / 20.8 |
+| VoxelNeXt | **64.7 / 42.3** | **52.2 / 27.4** | **35.9 / 9.0** | **50.9 / 26.2** |
 
 ### Cooperative 3D Object Detection
-| Method | Modality | AP_Veh ↑ | AP_Ped ↑ | AP_Cyc ↑ | mAP ↑ | mATE ↓ | mASE ↓ | mAOE ↓ | mAVE ↓ | NDS ↑ |
-|---|:---:|---|---|---|---|---|---|---|---|---|
-| No Fusion | L | 67.1 / 41.5 | 38.0 / 6.3 | 37.3 / 11.6 | 47.5 / 19.8 | 0.117 / 0.247 | 0.876 / 0.880 | 1.069 / 1.126 | 1.260 / 1.625 | 33.8 / 18.6 |
-| F-Cooper | L | **75.4 / 52.8** | 50.1 / 9.1 | 44.7 / 20.4 | 56.8 / 27.4 | 0.117 / 0.205 | **0.874 / 0.879** | 1.074 / 1.206 | 1.358 / 1.449 | 38.5 / 22.9 |
-| Raw-level Fusion | L | 71.3 / 48.9 | 38.1 / 8.5 | 40.7 / 16.3 | 50.0 / 24.6 | 0.135 / 0.242 | 0.875 / 0.882 | **1.062 / 1.242** | 1.308 / 1.469 | 34.9 / 21.1 |
-| VoxelNeXt | L | 71.5 / 50.6 | **60.1 / 35.4** | **47.6 / 21.9** | **59.7 / 35.9** | **0.085 / 0.159** | 0.877 / 0.878 | 1.070 / 1.204 | 1.262 / 1.463 | **40.2 / 27.6** |
+| Method | AP_Veh ↑ | AP_Ped ↑ | AP_Cyc ↑ | mAP ↑ |
+|---|---|---|---|---|
+| No Fusion | 67.1 / 41.5 | 38.0 / 6.3 | 37.3 / 11.6 | 47.5 / 19.8 |
+| F-Cooper | **75.4 / 52.8** | 50.1 / 9.1 | 44.7 / 20.4 | 56.8 / 27.4 |
+| Raw-level Fusion | 71.3 / 48.9 | 38.1 / 8.5 | 40.7 / 16.3 | 50.0 / 24.6 |
+| VoxelNeXt | 71.5 / 50.6 | **60.1 / 35.4** | **47.6 / 21.9** | **59.7 / 35.9** |
 
 ### Scheduling Studies — Single-Agent Policies
 mAP at 50m / 100m. Base detector: VoxelNeXt (LiDAR cooperative). Rows = inference-time policy, columns = training-time policy.
