@@ -2,7 +2,6 @@
 
 <h3 align="center">A Multi-Agent Scheduling Dataset for Enhanced Cooperation in Autonomous Driving</h3>
 
-
 <p align="center">
   <a href="https://arxiv.org/abs/2411.13340">
     <img src="https://img.shields.io/badge/arXiv-2411.13340-b31b1b.svg" alt="arXiv">
@@ -14,7 +13,7 @@ WHALES (**W**ireless en**H**anced **A**utonomous vehicles with **L**arge number 
 
 ## News
 - **2025-11-21** – Released WHALES dataset v1.0 with cooperative scheduling benchmarks.
-- **2025-6-17** – WHALES was accepted by IROS 2025!
+- **2025-06-17** – WHALES was accepted by IROS 2025!
 
 ## Table of Contents
 - [Dataset Overview](#dataset-overview)
@@ -37,14 +36,14 @@ WHALES (**W**ireless en**H**anced **A**utonomous vehicles with **L**arge number 
 ### Comparison with Existing Benchmarks
 | Dataset | Year | Real/Simulated | V2X | Image | Point Cloud | 3D Annotations | Classes | Avg. Agents |
 |---------|------|----------------|-----|-------|-------------|----------------|---------|-------------|
-| KITTI | 2012 | real | No | 15k | 15k | 200k | 8 | 1 |
-| nuScenes | 2019 | real | No | 1.4M | 400k | 1.4M | 23 | 1 |
-| DAIR-V2X | 2021 | real | V2V&I | 39k | 39k | 464k | 10 | 2 |
-| V2X-Sim | 2021 | simulated | V2V&I | 0 | 10k | 26.6k | 2 | 2 |
-| OPV2V | 2022 | simulated | V2V | 44k | 11k | 230k | 1 | 3 |
-| DOLPHINS | 2022 | simulated | V2V&I | 42k | 42k | 293k | 3 | 3 |
-| V2V4Real | 2023 | real | V2V | 40k | 20k | 240k | 5 | 2 |
-| **WHALES (Ours)** | 2024 | simulated | V2V&I | 70k | 17k | 2.01M | 3 | **8.4** |
+| KITTI | 2012 | Real | No | 15k | 15k | 200k | 8 | 1 |
+| nuScenes | 2019 | Real | No | 1.4M | 400k | 1.4M | 23 | 1 |
+| DAIR-V2X | 2021 | Real | V2V&I | 39k | 39k | 464k | 10 | 2 |
+| V2X-Sim | 2021 | Simulated | V2V&I | 0 | 10k | 26.6k | 2 | 2 |
+| OPV2V | 2022 | Simulated | V2V | 44k | 11k | 230k | 1 | 3 |
+| DOLPHINS | 2022 | Simulated | V2V&I | 42k | 42k | 293k | 3 | 3 |
+| V2V4Real | 2023 | Real | V2V | 40k | 20k | 240k | 5 | 2 |
+| **WHALES (Ours)** | 2024 | Simulated | V2V&I | 70k | 17k | 2.01M | 3 | **8.4** |
 
 ### Agent Types
 | Location | Category | Sensors | Planning & Control | Tasks | Spawning |
@@ -72,7 +71,6 @@ WHALES (**W**ireless en**H**anced **A**utonomous vehicles with **L**arge number 
    ```
 4. Install `mmdetection3d==0.17.1` following the [official guide](https://github.com/open-mmlab/mmdetection3d).
 5. *(Optional)* Install [OpenCOOD](https://github.com/DerrickXuNu/OpenCOOD) for additional cooperative baselines.
-
 
 ### Data Preparation
 1. **Download** the full dataset from Google Drive: [Download Whales](https://drive.google.com/drive/folders/1L9xkBAfFox1WZR5aBGhmW6jF9dXIBLru?usp=sharing).
@@ -134,16 +132,16 @@ python tools/misc/visualize_whales.py coco_batch \
 ```
 
 ## Scheduling Algorithms
-Agent scheduling pipelines live in `./mmdet3d_plugin/datasets/pipelines/cooperative_perception.py`.  
-CAHS prioritizes collaborators by historical coverage and predicted gains.  
+Agent scheduling pipelines live in `./mmdet3d_plugin/datasets/pipelines/cooperative_perception.py`.
+CAHS prioritizes collaborators by historical coverage and predicted gains.
 ![CAHS overview](figs/overview.svg)
 
 ## Experimental Results
 
-All numbers below are reported as `50 m / 100 m`, the two evaluation ranges used by the WHALES protocol (per-class radial distance from ego). Modality column: **L** = LiDAR, **C** = Camera, **L+C** = both.
+All numbers below are reported as `50m / 100m`, the two evaluation ranges used by the WHALES protocol (per-class radial distance from ego). Modality column: **L** = LiDAR, **C** = Camera, **L+C** = both.
 
 ### Stand-alone 3D Object Detection
-| Method | Modality | $\text{AP}_{Veh}\uparrow$ | $\text{AP}_{Ped}\uparrow$ | $\text{AP}_{Cyc}\uparrow$ | $mAP\uparrow$ | $mATE\downarrow$ | $mASE\downarrow$ | $mAOE\downarrow$ | $mAVE\downarrow$ | $NDS\uparrow$ |
+| Method | Modality | AP_Veh ↑ | AP_Ped ↑ | AP_Cyc ↑ | mAP ↑ | mATE ↓ | mASE ↓ | mAOE ↓ | mAVE ↓ | NDS ↑ |
 |---|:---:|---|---|---|---|---|---|---|---|---|
 | PointPillars | L | 67.1 / 41.5 | 38.0 / 6.3 | 37.3 / 11.6 | 47.5 / 19.8 | 0.117 / 0.247 | 0.876 / 0.880 | 1.069 / 1.126 | 1.260 / 1.625 | 33.8 / 18.6 |
 | SECOND | L | 58.5 / 38.8 | 27.1 / 12.1 | 24.1 / 12.9 | 36.6 / 21.2 | 0.106 / 0.156 | 0.875 / 0.878 | 1.748 / 1.729 | 1.005 / 1.256 | 28.5 / 20.3 |
@@ -151,7 +149,7 @@ All numbers below are reported as `50 m / 100 m`, the two evaluation ranges used
 | VoxelNeXt | L | **64.7 / 42.3** | **52.2 / 27.4** | **35.9 / 9.0** | **50.9 / 26.2** | **0.075 / 0.142** | 0.877 / 0.877 | 1.212 / 1.147 | 1.133 / 1.348 | **36.0 / 22.9** |
 
 ### Cooperative 3D Object Detection
-| Method | Modality | $\text{AP}_{Veh}\uparrow$ | $\text{AP}_{Ped}\uparrow$ | $\text{AP}_{Cyc}\uparrow$ | $mAP\uparrow$ | $mATE\downarrow$ | $mASE\downarrow$ | $mAOE\downarrow$ | $mAVE\downarrow$ | $NDS\uparrow$ |
+| Method | Modality | AP_Veh ↑ | AP_Ped ↑ | AP_Cyc ↑ | mAP ↑ | mATE ↓ | mASE ↓ | mAOE ↓ | mAVE ↓ | NDS ↑ |
 |---|:---:|---|---|---|---|---|---|---|---|---|
 | No Fusion | L | 67.1 / 41.5 | 38.0 / 6.3 | 37.3 / 11.6 | 47.5 / 19.8 | 0.117 / 0.247 | 0.876 / 0.880 | 1.069 / 1.126 | 1.260 / 1.625 | 33.8 / 18.6 |
 | F-Cooper | L | **75.4 / 52.8** | 50.1 / 9.1 | 44.7 / 20.4 | 56.8 / 27.4 | 0.117 / 0.205 | **0.874 / 0.879** | 1.074 / 1.206 | 1.358 / 1.449 | 38.5 / 22.9 |
@@ -159,7 +157,7 @@ All numbers below are reported as `50 m / 100 m`, the two evaluation ranges used
 | VoxelNeXt | L | 71.5 / 50.6 | **60.1 / 35.4** | **47.6 / 21.9** | **59.7 / 35.9** | **0.085 / 0.159** | 0.877 / 0.878 | 1.070 / 1.204 | 1.262 / 1.463 | **40.2 / 27.6** |
 
 ### Scheduling Studies — Single-Agent Policies
-mAP at 50 m / 100 m. Base detector: VoxelNeXt (LiDAR cooperative). Rows = inference-time policy, columns = training-time policy.
+mAP at 50m / 100m. Base detector: VoxelNeXt (LiDAR cooperative). Rows = inference-time policy, columns = training-time policy.
 
 | Inference \\ Training | No Fusion | Closest First | Single Random | Multiple Random | Full Communication |
 |-----------------------|-----------|---------------|---------------|-----------------|--------------------|
@@ -170,7 +168,7 @@ mAP at 50 m / 100 m. Base detector: VoxelNeXt (LiDAR cooperative). Rows = infere
 | **CAHS (Proposed)** | **56.1 / 29.6** | **62.5 / 31.7** | **62.7 / 35.9** | **58.3 / 32.6** | **59.9 / 31.0** |
 
 ### Scheduling Studies — Multi-Agent Policies
-mAP at 50 m / 100 m. Base detector: VoxelNeXt (LiDAR cooperative). Same axes as above.
+mAP at 50m / 100m. Base detector: VoxelNeXt (LiDAR cooperative). Same axes as above.
 
 | Inference \\ Training | No Fusion | Closest First | Single Random | Multiple Random | Full Communication |
 |-----------------------|-----------|---------------|---------------|-----------------|--------------------|
@@ -183,7 +181,7 @@ mAP at 50 m / 100 m. Base detector: VoxelNeXt (LiDAR cooperative). Same axes as 
 - [ ] Publish dataset and checkpoints on HuggingFace.
 
 ## Citation
-````bibtex
+```bibtex
 @INPROCEEDINGS{11247472,
   author    = {Wang, Yinsong Richard and Chen, Siwei and Song, Ziyi and Zhou, Sheng},
   title     = {{WHALES: A Multi-Agent Scheduling Dataset for Enhanced Cooperation in Autonomous Driving}},
@@ -193,3 +191,4 @@ mAP at 50 m / 100 m. Base detector: VoxelNeXt (LiDAR cooperative). Same axes as 
   keywords  = {Wireless communication; Three-dimensional displays; Scalability; Whales; Benchmark testing; Metadata; Scheduling; Vehicle dynamics; Vehicle-to-everything; Autonomous vehicles},
   doi       = {10.1109/IROS60139.2025.11247472}
 }
+```
