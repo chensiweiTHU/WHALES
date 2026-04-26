@@ -93,7 +93,9 @@ class Anchor3DHead(BaseModule, AnchorTrainMixin):
 
         # build loss function
         self.use_sigmoid_cls = loss_cls.get('use_sigmoid', False)
-        self.sampling = loss_cls['type'] not in ['FocalLoss', 'GHMC']
+        self.sampling = loss_cls['type'] not in [
+            'FocalLoss', 'GHMC', 'WeightedFocalLoss'
+        ]
         if not self.use_sigmoid_cls:
             self.num_classes += 1
         self.loss_cls = build_loss(loss_cls)

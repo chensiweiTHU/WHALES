@@ -401,7 +401,6 @@ class WhalesDataset(Custom3DDataset):
         gt_names_3d = info['gt_names'][mask]
         if gt_names_3d.ndim>1:
             gt_names_3d = gt_names_3d.reshape(-1)
-        # print(len(gt_bboxes_3d), len(gt_names_3d))
         gt_labels_3d = []
         for cat in gt_names_3d:
             if cat in self.CLASSES:
@@ -632,7 +631,7 @@ class WhalesDataset(Custom3DDataset):
             for name in result_names:
                 print('Evaluating bboxes of {}'.format(name))
                 ret_dict = self._evaluate_single(result_files[name])
-            results_dict.update(ret_dict)
+                results_dict.update(ret_dict)
         elif isinstance(result_files, str):
             results_dict = self._evaluate_single(result_files)
 
@@ -687,13 +686,7 @@ class WhalesDataset(Custom3DDataset):
             gt_bboxes = self.get_ann_info(i)['gt_bboxes_3d'].tensor.numpy()
             show_gt_bboxes = Box3DMode.convert(gt_bboxes, Box3DMode.LIDAR,
                                                Box3DMode.DEPTH)
-            show_gt = True
-            if not show_gt:
-                pred_bboxes = result['boxes_3d'][:].tensor.numpy()
-                show_pred_bboxes = Box3DMode.convert(
-                    pred_bboxes, Box3DMode.LIDAR, Box3DMode.DEPTH)
-            else:
-                show_pred_bboxes = None
+            show_pred_bboxes = None
             show_result(points, show_gt_bboxes, show_pred_bboxes, out_dir,
                         file_name, show)
             print(f'Visualized {file_name} in {out_dir}')

@@ -94,10 +94,11 @@ model = dict(
         positional_encoding=dict(
             type='SinePositionalEncoding3D', num_feats=128, normalize=True),
         loss_cls=dict(
-            type='FocalLoss',
+            type='WeightedFocalLoss',
             use_sigmoid=True,
             gamma=2.0,
             alpha=0.25,
+            class_weight=[1.0, 1.0, 3.0],  # vehicle, pedestrian, cyclist (~3x rarer)
             loss_weight=2.0),
         loss_bbox=dict(type='L1Loss', loss_weight=0.25),
         loss_iou=dict(type='GIoULoss', loss_weight=0.0),

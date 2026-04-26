@@ -140,33 +140,39 @@ CAHS prioritizes collaborators by historical coverage and predicted gains.
 
 ## Experimental Results
 
-### Stand-alone 3D Object Detection (50 m / 100 m)
-| Method | $\text{AP}_{Veh}\uparrow$ | $\text{AP}_{Ped}\uparrow$ | $\text{AP}_{Cyc}\uparrow$ | $mAP\uparrow$ | $mATE\downarrow$ | $mASE\downarrow$ | $mAOE\downarrow$ | $mAVE\downarrow$ | $NDS\uparrow$ |
-|---------|--------------------------|---------------------------|---------------------------|----------------|------------------|------------------|------------------|------------------|--------------|
-| PointPillars | 67.1 / 41.5 | 38.0 / 6.3 | 37.3 / 11.6 | 47.5 / 19.8 | 0.117 / 0.247 | 0.876 / 0.880 | 1.069 / 1.126 | 1.260 / 1.625 | 33.8 / 18.6 |
-| SECOND | 58.5 / 38.8 | 27.1 / 12.1 | 24.1 / 12.9 | 36.6 / 21.2 | 0.106 / 0.156 | 0.875 / 0.878 | 1.748 / 1.729 | 1.005 / 1.256 | 28.5 / 20.3 |
-| RegNet | 66.9 / 42.3 | 38.7 / 8.4 | 32.9 / 11.7 | 46.2 / 20.8 | 0.119 / 0.240 | 0.874 / 0.881 | 1.079 / 1.158 | 1.231 / 1.421 | 33.2 / 19.2 |
-| VoxelNeXt | 64.7 / 42.3 | 52.2 / 27.4 | 35.9 / 9.0 | 50.9 / 26.2 | 0.075 / 0.142 | 0.877 / 0.877 | 1.212 / 1.147 | 1.133 / 1.348 | 36.0 / 22.9 |
+All numbers below are reported as `50 m / 100 m`, the two evaluation ranges used by the WHALES protocol (per-class radial distance from ego). Modality column: **L** = LiDAR, **C** = Camera, **L+C** = both.
 
-### Cooperative 3D Object Detection (50 m / 100 m)
-| Method | $\text{AP}_{Veh}\uparrow$ | $\text{AP}_{Ped}\uparrow$ | $\text{AP}_{Cyc}\uparrow$ | $mAP\uparrow$ | $mATE\downarrow$ | $mASE\downarrow$ | $mAOE\downarrow$ | $mAVE\downarrow$ | $NDS\uparrow$ |
-|---------|--------------------------|---------------------------|---------------------------|----------------|------------------|------------------|------------------|------------------|--------------|
-| No Fusion | 67.1 / 41.5 | 38.0 / 6.3 | 37.3 / 11.6 | 47.5 / 19.8 | 0.117 / 0.247 | 0.876 / 0.880 | 1.069 / 1.126 | 1.260 / 1.625 | 33.8 / 18.6 |
-| F-Cooper | **75.4 / 52.8** | 50.1 / 9.1 | 44.7 / 20.4 | 56.8 / 27.4 | 0.117 / 0.205 | **0.874 / 0.879** | 1.074 / 1.206 | 1.358 / 1.449 | 38.5 / 22.9 |
-| Raw-level Fusion | 71.3 / 48.9 | 38.1 / 8.5 | 40.7 / 16.3 | 50.0 / 24.6 | 0.135 / 0.242 | 0.875 / 0.882 | **1.062 / 1.242** | 1.308 / 1.469 | 34.9 / 21.1 |
-| VoxelNeXt | 71.5 / 50.6 | **60.1 / 35.4** | **47.6 / 21.9** | **59.7 / 35.9** | **0.085 / 0.159** | 0.877 / 0.878 | 1.070 / 1.204 | 1.262 / 1.463 | **40.2 / 27.6** |
+### Stand-alone 3D Object Detection
+| Method | Modality | $\text{AP}_{Veh}\uparrow$ | $\text{AP}_{Ped}\uparrow$ | $\text{AP}_{Cyc}\uparrow$ | $mAP\uparrow$ | $mATE\downarrow$ | $mASE\downarrow$ | $mAOE\downarrow$ | $mAVE\downarrow$ | $NDS\uparrow$ |
+|---|:---:|---|---|---|---|---|---|---|---|---|
+| PointPillars | L | 67.1 / 41.5 | 38.0 / 6.3 | 37.3 / 11.6 | 47.5 / 19.8 | 0.117 / 0.247 | 0.876 / 0.880 | 1.069 / 1.126 | 1.260 / 1.625 | 33.8 / 18.6 |
+| SECOND | L | 58.5 / 38.8 | 27.1 / 12.1 | 24.1 / 12.9 | 36.6 / 21.2 | 0.106 / 0.156 | 0.875 / 0.878 | 1.748 / 1.729 | 1.005 / 1.256 | 28.5 / 20.3 |
+| RegNet | L | 66.9 / 42.3 | 38.7 / 8.4 | 32.9 / 11.7 | 46.2 / 20.8 | 0.119 / 0.240 | 0.874 / 0.881 | 1.079 / 1.158 | 1.231 / 1.421 | 33.2 / 19.2 |
+| VoxelNeXt | L | **64.7 / 42.3** | **52.2 / 27.4** | **35.9 / 9.0** | **50.9 / 26.2** | **0.075 / 0.142** | 0.877 / 0.877 | 1.212 / 1.147 | 1.133 / 1.348 | **36.0 / 22.9** |
 
-### Scheduling Studies (Single-Agent Policies, 50 m / 100 m)
-| Inference \\ Training | No Fusion | Closest Agent | Single Random | Multiple Random | Full Communication |
+### Cooperative 3D Object Detection
+| Method | Modality | $\text{AP}_{Veh}\uparrow$ | $\text{AP}_{Ped}\uparrow$ | $\text{AP}_{Cyc}\uparrow$ | $mAP\uparrow$ | $mATE\downarrow$ | $mASE\downarrow$ | $mAOE\downarrow$ | $mAVE\downarrow$ | $NDS\uparrow$ |
+|---|:---:|---|---|---|---|---|---|---|---|---|
+| No Fusion | L | 67.1 / 41.5 | 38.0 / 6.3 | 37.3 / 11.6 | 47.5 / 19.8 | 0.117 / 0.247 | 0.876 / 0.880 | 1.069 / 1.126 | 1.260 / 1.625 | 33.8 / 18.6 |
+| F-Cooper | L | **75.4 / 52.8** | 50.1 / 9.1 | 44.7 / 20.4 | 56.8 / 27.4 | 0.117 / 0.205 | **0.874 / 0.879** | 1.074 / 1.206 | 1.358 / 1.449 | 38.5 / 22.9 |
+| Raw-level Fusion | L | 71.3 / 48.9 | 38.1 / 8.5 | 40.7 / 16.3 | 50.0 / 24.6 | 0.135 / 0.242 | 0.875 / 0.882 | **1.062 / 1.242** | 1.308 / 1.469 | 34.9 / 21.1 |
+| VoxelNeXt | L | 71.5 / 50.6 | **60.1 / 35.4** | **47.6 / 21.9** | **59.7 / 35.9** | **0.085 / 0.159** | 0.877 / 0.878 | 1.070 / 1.204 | 1.262 / 1.463 | **40.2 / 27.6** |
+
+### Scheduling Studies — Single-Agent Policies
+mAP at 50 m / 100 m. Base detector: VoxelNeXt (LiDAR cooperative). Rows = inference-time policy, columns = training-time policy.
+
+| Inference \\ Training | No Fusion | Closest First | Single Random | Multiple Random | Full Communication |
 |-----------------------|-----------|---------------|---------------|-----------------|--------------------|
 | **No Fusion (Baseline)** | 50.9 / 26.2 | 50.9 / 23.3 | 51.3 / 25.3 | 50.3 / 22.9 | 45.6 / 18.8 |
-| **Closest Agent** | 39.9 / 20.3 | 58.4 / 30.2 | 58.3 / 32.6 | 57.3 / 30.5 | 55.4 / 10.8 |
+| **Closest First** | 39.9 / 20.3 | 58.4 / 30.2 | 58.3 / 32.6 | 57.3 / 30.5 | 55.4 / 10.8 |
 | **Single Random** | 43.3 / 22.8 | 57.9 / 31.0 | 58.4 / 33.3 | 57.7 / 31.4 | 55.0 / 14.6 |
 | **MASS** | 55.5 / 11.0 | 58.8 / **33.7** | 58.9 / 34.0 | 57.3 / 32.3 | 54.1 / 27.4 |
 | **CAHS (Proposed)** | **56.1 / 29.6** | **62.5 / 31.7** | **62.7 / 35.9** | **58.3 / 32.6** | **59.9 / 31.0** |
 
-### Scheduling Studies (Multi-Agent Policies, 50 m / 100 m)
-| Inference \\ Training | No Fusion | Closest Agent | Single Random | Multiple Random | Full Communication |
+### Scheduling Studies — Multi-Agent Policies
+mAP at 50 m / 100 m. Base detector: VoxelNeXt (LiDAR cooperative). Same axes as above.
+
+| Inference \\ Training | No Fusion | Closest First | Single Random | Multiple Random | Full Communication |
 |-----------------------|-----------|---------------|---------------|-----------------|--------------------|
 | **Multiple Random** | 34.5 / **16.9** | 60.7 / 35.1 | 61.2 / 37.1 | 61.4 / 36.4 | 58.8 / 12.9 |
 | **Full Communication** | 29.1 / 10.5 | 63.7 / 38.4 | 63.7 / 39.1 | **64.0 / 41.1** | 65.1 / 39.2 |

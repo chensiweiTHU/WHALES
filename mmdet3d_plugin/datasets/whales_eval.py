@@ -1,7 +1,6 @@
 # modified from nuScenes dev-kit.
 # Code written by Siwei Chen, 2024
 
-import argparse
 import json
 import os
 import random
@@ -10,17 +9,13 @@ from typing import Tuple, Dict, Any
 
 import numpy as np
 from nuscenes import NuScenes
-from nuscenes.eval.common.config import config_factory
 from nuscenes.eval.common.data_classes import EvalBoxes, EvalBox
-from pyquaternion import Quaternion
-# from nuscenes.eval.common.loaders import load_gt, add_center_dist, filter_eval_boxes
 from nuscenes.eval.detection.algo import accumulate, calc_ap, calc_tp
 from nuscenes.eval.detection.constants import TP_METRICS
-from nuscenes.eval.detection.data_classes import DetectionConfig, DetectionMetrics, \
-    DetectionMetricDataList
-from nuscenes.utils.data_classes import Box
-from nuscenes.eval.detection.render import summary_plot, class_pr_curve, class_tp_curve, dist_pr_curve, visualize_sample
-from nuscenes.utils.geometry_utils import points_in_box
+from nuscenes.eval.detection.data_classes import (
+    DetectionConfig, DetectionMetrics, DetectionMetricDataList)
+from nuscenes.eval.detection.render import (
+    summary_plot, class_pr_curve, class_tp_curve, dist_pr_curve, visualize_sample)
 from nuscenes.eval.tracking.data_classes import TrackingBox
 def filter_eval_boxes(nusc: NuScenes,
                       eval_boxes: EvalBoxes,
@@ -218,86 +213,71 @@ class WhalesEval:
         self.pred_boxes, self.meta = self.load_prediction(self.result_path, self.cfg.max_boxes_per_sample, DetectionBox,
                                                      verbose=verbose)
         self.gt_boxes = self.load_gt(self.whales, self.eval_set, DetectionBox, verbose=verbose)
-        # mean_gt_box_h = sum([self.gt_boxes.all[i].translation[2] for i in range(2000)])/2000
-        # mean_pred_box_h = sum([self.pred_boxes.all[i].translation[2] for i in range(2000)])/2000
-        # print('Mean gt box height: ',mean_gt_box_h)
-        # print('Mean pred box height: ',mean_pred_box_h)
         assert set(self.pred_boxes.sample_tokens) == set(self.gt_boxes.sample_tokens).intersection(set(self.pred_boxes.sample_tokens)), \
             "Samples in split doesn't match samples in predictions."
 
-        # Add center distances.
-        # centerpoint =True
-        self.pred_boxes = self.add_center_dist(whales, self.pred_boxes)#,not centerpoint)
+        self.pred_boxes = self.add_center_dist(whales, self.pred_boxes)
         self.gt_boxes = self.add_center_dist(whales, self.gt_boxes)
-        valuate = True
-        if valuate:
-            P_num = 0
-            In_P_num = 0
-            for box in self.gt_boxes.all:
-                if box.detection_name == 'Pedestrian':
-                    P_num += 1
-                    if box.ego_dist < 40:
-                        In_P_num += 1
-            print('Total {} Pedestrians gt'.format(P_num))
-            print('Total {} Pedestrians in 40m gt'.format(In_P_num))
-            P_num = 0
-            In_P_num = 0
-            for box in self.pred_boxes.all:
-                if box.detection_name == 'Pedestrian':
-                    P_num += 1
-                    if box.ego_dist < 40:
-                        In_P_num += 1
-            print('Total {} Pedestrians detected'.format(P_num))
-            print('Total {} Pedesrtians in 40m detected'.format(In_P_num))
+
+        gt_raw = self._count_by_class(self.gt_boxes)
+        pred_raw = self._count_by_class(self.pred_boxes)
+
         # Filter boxes (distance, points per box, etc.).
-        if verbose:
-            print('Filtering predictions')
-        self.pred_boxes = filter_eval_boxes(whales, self.pred_boxes, self.cfg.class_range, verbose=verbose)
-        if verbose:
-            print('Filtering ground truth annotations')
-        self.gt_boxes = filter_eval_boxes(whales, self.gt_boxes, self.cfg.class_range, verbose=verbose)
+        self.pred_boxes = filter_eval_boxes(whales, self.pred_boxes, self.cfg.class_range, verbose=False)
+        self.gt_boxes = filter_eval_boxes(whales, self.gt_boxes, self.cfg.class_range, verbose=False)
+
+        gt_in = self._count_by_class(self.gt_boxes)
+        pred_in = self._count_by_class(self.pred_boxes)
+        self._print_eval_summary(gt_raw, gt_in, pred_raw, pred_in)
 
         self.sample_tokens = self.gt_boxes.sample_tokens
 
-    def add_center_dist(self, whales: Whales,
-                        eval_boxes: EvalBoxes, mode="pointpillars"):
-        """
-        Adds the cylindrical (xy) center distance from ego vehicle to each box.
-        :param nusc: The NuScenes instance.
-        :param eval_boxes: A set of boxes, either GT or predictions.
-        :return: eval_boxes augmented with center distances.
+    def _count_by_class(self, eval_boxes: EvalBoxes) -> dict:
+        counts = {c: 0 for c in self.cfg.class_names}
+        for box in eval_boxes.all:
+            if box.detection_name in counts:
+                counts[box.detection_name] += 1
+        return counts
+
+    def _print_eval_summary(self, gt_raw, gt_in, pred_raw, pred_in) -> None:
+        n_samples = len(self.gt_boxes.sample_tokens)
+        ranges = self.cfg.class_range
+        rows = [('class', 'range', 'GT in/all', 'PRED in/all', 'PRED:GT')]
+        for c in self.cfg.class_names:
+            rng = f'{ranges[c]}m'
+            gt_str = f'{gt_in[c]}/{gt_raw[c]}'
+            pred_str = f'{pred_in[c]}/{pred_raw[c]}'
+            ratio = (pred_in[c] / gt_in[c]) if gt_in[c] else float('inf')
+            rows.append((c, rng, gt_str, pred_str, f'{ratio:.2f}'))
+        widths = [max(len(r[i]) for r in rows) for i in range(len(rows[0]))]
+        sep = '  '
+        print(f'\n=== WHALES eval summary ({n_samples} samples) ===')
+        for i, row in enumerate(rows):
+            print(sep.join(cell.ljust(widths[j]) for j, cell in enumerate(row)))
+            if i == 0:
+                print(sep.join('-' * w for w in widths))
+        print()
+
+    def add_center_dist(self, whales: Whales, eval_boxes: EvalBoxes):
+        """Compute each box's translation relative to the ego vehicle.
+
+        The result is stored on ``box.ego_translation`` and used downstream
+        by ``filter_eval_boxes`` for per-class radial-distance filtering.
         """
         for sample_token in eval_boxes.sample_tokens:
             sample = whales.sample[whales._token2ind['sample'][sample_token]]
-            # whales.get('sample', sample_token)
-            # sd_record = whales.get('sample_data', sample_rec['data']['LIDAR_TOP'])
-            # pose_record = whales.get('ego_pose', sd_record['ego_pose_token'])
-
             for box in eval_boxes[sample_token]:
-                # Both boxes and ego pose are given in global coord system, so distance can be calculated directly.
-                # Note that the z component of the ego pose is 0.
-                # if mode == "pointpillars":
-                if mode == 'centerpoint':
-                    translation = (box.translation[0] - sample['veh_locations'][sample['veh_id']][0]-4,
-                                    box.translation[1] - sample['veh_locations'][sample['veh_id']][1],
-                                    box.translation[2] - sample['veh_locations'][sample['veh_id']][2]+1.8)
-                    if isinstance(box, DetectionBox) or isinstance(box, TrackingBox):
-                        box.translation = translation
-                    else:
-                        raise NotImplementedError
-                if sample['veh_id']<sample['vehicle_num']-1:
-                    ego_translation = (box.translation[0] - sample['veh_locations'][sample['veh_id']][0],
-                                    box.translation[1] - sample['veh_locations'][sample['veh_id']][1],
-                                    box.translation[2] - sample['veh_locations'][sample['veh_id']][2]+1.8)
-                else:
-                    ego_translation = (box.translation[0] - sample['veh_locations'][sample['veh_id']][0],
-                                    box.translation[1] - sample['veh_locations'][sample['veh_id']][1],
-                                    box.translation[2] - sample['veh_locations'][sample['veh_id']][2])
-                # elif mode=="centerpoint":
-                #     ego_translation = (box.translation[0] - sample['veh_locations'][sample['veh_id']][0]-4,
-                #                     box.translation[1] - sample['veh_locations'][sample['veh_id']][1],
-                #                     box.translation[2] - sample['veh_locations'][sample['veh_id']][2]+3.6)
-                if isinstance(box, DetectionBox) or isinstance(box, TrackingBox):
+                ego_xyz = sample['veh_locations'][sample['veh_id']]
+                # Cooperative vehicles are stored at indices below vehicle_num-1;
+                # the +1.8 z lift compensates for their LiDAR mount height. The
+                # final index is the ego, which is already at sensor frame.
+                z_offset = 1.8 if sample['veh_id'] < sample['vehicle_num'] - 1 else 0.0
+                ego_translation = (
+                    box.translation[0] - ego_xyz[0],
+                    box.translation[1] - ego_xyz[1],
+                    box.translation[2] - ego_xyz[2] + z_offset,
+                )
+                if isinstance(box, (DetectionBox, TrackingBox)):
                     box.ego_translation = ego_translation
                 else:
                     raise NotImplementedError
@@ -361,26 +341,6 @@ class WhalesEval:
         # sample_tokens_all = [s['token'] for s in nusc.sample]
         # assert len(sample_tokens_all) > 0, "Error: Database has no samples!"
 
-        # Only keep samples from this split.
-        from nuscenes.eval.detection.utils import category_to_detection_name
-        from nuscenes.utils.splits import create_splits_scenes
-        splits = create_splits_scenes()
-
-        # Check compatibility of split with nusc_version.
-        # version = nusc.version
-        # if eval_split in {'train', 'val', 'train_detect', 'train_track'}:
-        #     assert version.endswith('trainval'), \
-        #         'Error: Requested split {} which is not compatible with NuScenes version {}'.format(eval_split, version)
-        # elif eval_split in {'mini_train', 'mini_val'}:
-        #     assert version.endswith('mini'), \
-        #         'Error: Requested split {} which is not compatible with NuScenes version {}'.format(eval_split, version)
-        # elif eval_split == 'test':
-        #     assert version.endswith('test'), \
-        #         'Error: Requested split {} which is not compatible with NuScenes version {}'.format(eval_split, version)
-        # else:
-        #     raise ValueError('Error: Requested split {} which this function cannot map to the correct NuScenes version.'
-        #                     .format(eval_split))
-
         if eval_split == 'test':
             # Check that you aren't trying to cheat :).
             assert len(whales.sample_annotation) > 0, \
@@ -394,7 +354,6 @@ class WhalesEval:
         #         sample_tokens.append(sample_token)
 
         all_annotations = EvalBoxes()
-        len(self.dataset )
 
         # Load annotations and filter predictions and annotations.
         tracking_id_set = set()
@@ -479,9 +438,8 @@ class WhalesEval:
             print('Accumulating metric data...')
         metric_data_list = DetectionMetricDataList()
         for class_name in self.cfg.class_names:
-            print('Accumulating metric data for class: %s' % class_name)
             for dist_th in self.cfg.dist_ths:
-                md = accumulate(self.gt_boxes, self.pred_boxes, class_name, self.cfg.dist_fcn_callable, dist_th,True)
+                md = accumulate(self.gt_boxes, self.pred_boxes, class_name, self.cfg.dist_fcn_callable, dist_th, False)
                 metric_data_list.set(class_name, dist_th, md)
 
         # -----------------------------------
@@ -615,52 +573,3 @@ class WhalesEval:
                      class_tps[class_name]['attr_err']))
 
         return metrics_summary
-
-
-
-
-if __name__ == "__main__":
-
-    # Settings.
-    parser = argparse.ArgumentParser(description='Evaluate nuScenes detection results.',
-                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('result_path', type=str, help='The submission as a JSON file.')
-    parser.add_argument('--output_dir', type=str, default='~/nuscenes-metrics',
-                        help='Folder to store result metrics, graphs and example visualizations.')
-    parser.add_argument('--eval_set', type=str, default='val',
-                        help='Which dataset split to evaluate on, train, val or test.')
-    parser.add_argument('--dataroot', type=str, default='/data/sets/nuscenes',
-                        help='Default nuScenes data directory.')
-    parser.add_argument('--version', type=str, default='v1.0-trainval',
-                        help='Which version of the nuScenes dataset to evaluate on, e.g. v1.0-trainval.')
-    parser.add_argument('--config_path', type=str, default='',
-                        help='Path to the configuration file.'
-                             'If no path given, the CVPR 2019 configuration will be used.')
-    parser.add_argument('--plot_examples', type=int, default=10,
-                        help='How many example visualizations to write to disk.')
-    parser.add_argument('--render_curves', type=int, default=1,
-                        help='Whether to render PR and TP curves to disk.')
-    parser.add_argument('--verbose', type=int, default=1,
-                        help='Whether to print to stdout.')
-    args = parser.parse_args()
-
-    result_path_ = os.path.expanduser(args.result_path)
-    output_dir_ = os.path.expanduser(args.output_dir)
-    eval_set_ = args.eval_set
-    dataroot_ = args.dataroot
-    version_ = args.version
-    config_path = args.config_path
-    plot_examples_ = args.plot_examples
-    render_curves_ = bool(args.render_curves)
-    verbose_ = bool(args.verbose)
-
-    if config_path == '':
-        cfg_ = config_factory('detection_cvpr_2019')
-    else:
-        with open(config_path, 'r') as _f:
-            cfg_ = DetectionConfig.deserialize(json.load(_f))
-
-    nusc_ = NuScenes(version=version_, verbose=verbose_, dataroot=dataroot_)
-    nusc_eval = DetectionEval(nusc_, config=cfg_, result_path=result_path_, eval_set=eval_set_,
-                              output_dir=output_dir_, verbose=verbose_)
-    nusc_eval.main(plot_examples=plot_examples_, render_curves=render_curves_)

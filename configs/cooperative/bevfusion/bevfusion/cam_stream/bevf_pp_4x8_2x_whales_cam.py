@@ -62,14 +62,16 @@ model = dict(
         anchor_generator=dict(
             type='AlignedAnchor3DRangeGenerator',
             ranges=[
-                [-49.6, -49.6, -1.8, 49.6, 49.6, -1.4],
-                [-49.6, -49.6, -1.7, 49.6, 49.6, -1.3],
-                [-49.6, -49.6, -2.0, 49.6, 49.6, -1.6],
+                [-49.6, -49.6, -1.8, 49.6, 49.6, -1.40],
+                [-49.6, -49.6, -1.0, 49.6, 49.6, -0.60],
+                [-49.6, -49.6, -1.4, 49.6, 49.6, -1.00],
+                [-49.6, -49.6, -1.4, 49.6, 49.6, -1.00],
             ],
             sizes=[
-                [5.0, 2.2, 1.8],   # vehicle
-                [0.60, 0.60, 1.80],  # pedestrian
-                [2.1, 0.80, 1.60],  # cyclist
+                [4.90, 2.13, 1.51],  # vehicle
+                [0.40, 0.40, 1.75],  # pedestrian
+                [2.00, 0.70, 1.30],  # cyclist (wide)
+                [1.50, 0.40, 1.30],  # cyclist (narrow)
             ],
             rotations=[0, 1.57],
             reshape_out=True),
@@ -79,10 +81,11 @@ model = dict(
         dir_limit_offset=0,
         bbox_coder=dict(type='DeltaXYZWLHRBBoxCoder', code_size=9),
         loss_cls=dict(
-            type='FocalLoss',
+            type='WeightedFocalLoss',
             use_sigmoid=True,
             gamma=2.0,
             alpha=0.25,
+            class_weight=[1.0, 1.0, 3.0],  # vehicle, pedestrian, cyclist (~3x rarer)
             loss_weight=1.0),
         loss_bbox=dict(type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0),
         loss_dir=dict(

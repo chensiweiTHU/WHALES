@@ -309,7 +309,6 @@ class CenterCropMultiViewImage(object):
         results['img_shape'] = [img.shape for img in results['img']]
         results['img_fixed_size'] = self.size
         
-        # FIX: Update lidar2img matrices (crop shifts principal point)
         if 'lidar2img' in results:
             updated_lidar2img = []
             for (start_x, start_y), l2i in zip(crop_offsets, results['lidar2img']):
@@ -318,8 +317,7 @@ class CenterCropMultiViewImage(object):
                 offset_matrix[1, 2] = -start_y  # Shift cy up
                 updated_lidar2img.append(offset_matrix @ l2i)
             results['lidar2img'] = updated_lidar2img
-            print(f"DEBUG CenterCropMultiViewImage: Applied crop offset {crop_offsets[0]}")
-        
+
         return results
 
     def __repr__(self):
@@ -344,8 +342,7 @@ class RandomScaleImageMultiViewImage(object):
         Returns:
             dict: Updated result dict.
         """
-        np.random.shuffle(self.scales)
-        rand_scale = self.scales[0]
+        rand_scale = float(np.random.choice(self.scales))
         img_shape = results['img_shape']
         y_size = int(img_shape[0] * rand_scale)
         x_size = int(img_shape[1] * rand_scale) 
@@ -356,7 +353,6 @@ class RandomScaleImageMultiViewImage(object):
         lidar2img = [scale_factor @ l2i for l2i in results['lidar2img']]
         results['lidar2img'] = lidar2img
         results['img_shape'] = [img.shape for img in results['img']]
-        # print(results['img_shape'])
         results['gt_bboxes_3d'].tensor[:, :6] *= rand_scale
         return results
 
@@ -370,7 +366,7 @@ class RandomScaleImageMultiViewImage(object):
 class HorizontalRandomFlipMultiViewImage(object):
 
     def __init__(self, flip_ratio=0.5, flip_bev=False):
-        self.flip_ratio = 0.5
+        self.flip_ratio = flip_ratio
         self.flip_bev = flip_bev
 
     def __call__(self, results):
@@ -407,46 +403,6 @@ class HorizontalRandomFlipMultiViewImage(object):
         lidar2img = [l2i @ flip_factor for l2i in results['lidar2img']]
         results['lidar2img'] = lidar2img
         return results
-
-    # def flip_bev_cam_params(self, results):
-    #     """Flip in BEV (LiDAR space) and update image coordinates"""
-        
-    #     # Get image width
-    #     w = results['img_shape'][0][1]
-        
-    #     # BEV flip in LiDAR space (flip y-axis)
-    #     flip_factor = np.eye(4)
-    #     flip_factor[1, 1] = -1
-        
-    #     updated_lidar2img = []
-    #     for l2i in results['lidar2img']:
-    #         l2i = np.array(l2i)
-            
-    #         # Apply BEV flip in 3D space
-    #         if l2i.shape == (4, 4):
-    #             l2i_flipped = l2i[:3, :] @ flip_factor
-    #         else:
-    #             l2i_flipped = l2i @ flip_factor
-            
-    #         # Apply image flip (update principal point)
-    #         # Create a copy to avoid modifying original
-    #         l2i_copy = l2i_flipped.copy()
-            
-    #         # Flip x-coordinates: x_new = w - x_old
-    #         # This affects the first row of the matrix
-    #         l2i_copy[0, :] = -l2i_copy[0, :]  # Flip x
-    #         l2i_copy[0, 2] = w + l2i_copy[0, 2]  # Offset by width (corrects cx)
-            
-    #         if l2i.shape == (4, 4):
-    #             # Reconstruct 4x4
-    #             l2i_new = np.eye(4, dtype=np.float32)
-    #             l2i_new[:3, :] = l2i_copy
-    #             updated_lidar2img.append(l2i_new)
-    #         else:
-    #             updated_lidar2img.append(l2i_copy)
-        
-    #     results['lidar2img'] = updated_lidar2img
-    #     return results
 
     def flip_bbox(self, input_dict, direction='horizontal'):
         assert direction in ['horizontal', 'vertical']

@@ -31,7 +31,9 @@ class NMSFreeCoderBEVFormer(BaseBBoxCoder):
                  num_classes=10):
         self.pc_range = pc_range
         self.voxel_size = voxel_size
-        self.post_center_range = post_center_range
+        self.post_center_range = (
+            torch.tensor(post_center_range)
+            if post_center_range is not None else None)
         self.max_num = max_num
         self.score_threshold = score_threshold
         self.num_classes = num_classes
@@ -45,7 +47,7 @@ class NMSFreeCoderBEVFormer(BaseBBoxCoder):
         cls_scores = cls_scores.sigmoid()
         scores, indexs = cls_scores.view(-1).topk(max_num)
         labels = indexs % self.num_classes
-        bbox_index = indexs // self.num_classes
+        bbox_index = torch.div(indexs, self.num_classes, rounding_mode='floor')
         bbox_preds = bbox_preds[bbox_index]
 
         final_box_preds = denormalize_bbox(bbox_preds, self.pc_range)
@@ -63,8 +65,7 @@ class NMSFreeCoderBEVFormer(BaseBBoxCoder):
                 thresh_mask = final_scores >= tmp_score
 
         if self.post_center_range is not None:
-            self.post_center_range = torch.tensor(
-                self.post_center_range, device=scores.device)
+            self.post_center_range = self.post_center_range.to(scores.device)
             mask = (final_box_preds[..., :3] >=
                     self.post_center_range[:3]).all(1)
             mask &= (final_box_preds[..., :3] <=
