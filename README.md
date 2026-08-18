@@ -1,3 +1,5 @@
+
+
 <h1 align="center">WHALES</h1>
 
 <h3 align="center">A Multi-Agent Scheduling Dataset for Enhanced Cooperation in Autonomous Driving</h3>
@@ -69,7 +71,7 @@ WHALES (**W**ireless en**H**anced **A**utonomous vehicles with **L**arge number 
    ```bash
    pip install -e .
    ```
-4. Install `mmdetection3d==0.17.1` following the [official guide](https://github.com/open-mmlab/mmdetection3d).
+4. Install `mmdetection3d` (v3.x) following the [official guide](https://github.com/open-mmlab/mmdetection3d).
 5. *(Optional)* Install [OpenCOOD](https://github.com/DerrickXuNu/OpenCOOD) for additional cooperative baselines.
 
 ### Data Preparation
